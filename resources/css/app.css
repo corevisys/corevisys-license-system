@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+@theme {
+    --font-sans: "Inter", "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --radius-3xl: 24px;
+    --radius-4xl: 32px;
+
+    /* Dynamic Theme Colors - Mapped to CSS Variables */
+    --color-brand-primary: var(--color-brand-primary);
+    --color-brand-secondary: var(--color-brand-secondary);
+    --color-brand-accent: var(--color-brand-accent);
+
+    --color-bg-dark: var(--bg-primary);
+    --color-bg-acrylic: var(--bg-acrylic);
+
+    --color-glass: var(--glass-bg);
+    --color-glass-border: var(--glass-border);
+
+    --color-text-primary: var(--text-primary);
+    --color-text-secondary: var(--text-secondary);
+    --color-text-muted: var(--text-muted);
+
+    --color-adaptive: var(--text-adaptive);
+
+    --shadow-soft-md: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+    --shadow-glow-primary: 0 0 20px rgba(37, 99, 235, 0.15);
+    --shadow-glow-accent: 0 0 20px rgba(6, 182, 212, 0.15);
+
+    @keyframes float {
+
+        0%,
+        100% {
+            transform: translateY(0);
+        }
+
+        50% {
+            transform: translateY(-10px);
+        }
+    }
+
+    @keyframes pulse-glow {
+
+        0%,
+        100% {
+            opacity: 0.5;
+            filter: blur(40px);
+        }
+
+        50% {
+            opacity: 0.8;
+            filter: blur(60px);
+        }
+    }
+
+    @keyframes shimmer {
+        from {
+            transform: translateX(-100%);
+        }
+
+        to {
+            transform: translateX(100%);
+        }
+    }
+}
+
+@layer base {
+    :root {
+        /* Default: Light Modern (Billion-dollar SaaS feel) */
+        --color-brand-primary: #2563EB; /* Blue 600 */
+        --color-brand-secondary: #0F172A; /* Slate 900 */
+        --color-brand-accent: #06B6D4; /* Cyan 500 */
+        
+        --bg-primary: #F8FAFC; /* Slate 50 */
+        --bg-acrylic: rgba(248, 250, 252, 0.85);
+        --glass-bg: rgba(255, 255, 255, 0.7);
+        --glass-border: rgba(15, 23, 42, 0.08);
+        
+        --text-primary: #0F172A; /* Slate 900 */
+        --text-secondary: #334155; /* Slate 700 */
+        --text-muted: #64748b; /* Slate 500 */
+        --text-adaptive: #0F172A;
+    }
+
+    /* THEME: Dark Mode */
+    [data-theme="dark-modern"] {
+        --color-brand-primary: #3B82F6; /* Blue 500 */
+        --color-brand-secondary: #0F172A;
+        --color-brand-accent: #22D3EE; /* Cyan 400 */
+        
+        --bg-primary: #0F172A; /* Slate 900 */
+        --bg-acrylic: rgba(15, 23, 42, 0.85);
+        --glass-bg: rgba(255, 255, 255, 0.03);
+        --glass-border: rgba(255, 255, 255, 0.08);
+        
+        --text-primary: #F8FAFC;
+        --text-secondary: #CBD5E1;
+        --text-muted: #94A3B8;
+        --text-adaptive: #FFFFFF;
+    }
+
+    html {
+        transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    body {
+        @apply antialiased text-text-primary bg-bg-dark selection:bg-brand-primary selection:text-white;
+        font-size: 0.875rem;
+        color: var(--text-primary);
+    }
+}
+
+@layer utilities {
+    .glass {
+        @apply bg-glass backdrop-blur-md border border-glass-border;
+    }
+
+    .acrylic {
+        @apply bg-bg-acrylic backdrop-blur-xl border border-glass-border;
+    }
+
+    .text-glow-primary {
+        text-shadow: 0 0 10px rgba(37, 99, 235, 0.5);
+    }
+    
+    .text-glow-accent {
+        text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+    }
+
+    .animate-float {
+        animation: float 6s ease-in-out infinite;
+    }
+
+    .animate-pulse-glow {
+        animation: pulse-glow 4s ease-in-out infinite;
+    }
+}
