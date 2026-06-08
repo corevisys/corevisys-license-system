@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/storage/logo/Main-Logo.png" width="300" alt="CoreVisys Logo">
+  <img src="storage/app/public/Main-Logo-2.png" width="300" alt="CoreVisys Logo">
 </p>
 
 # CoreVisys — Enterprise Software Agency
