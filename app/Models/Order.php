@@ -2,12 +2,19 @@
 
 namespace App\Models;
 
+use App\Support\OrderStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Order extends Model
 {
     use HasFactory;
+
+    public const PENDING = OrderStatus::PENDING;
+    public const AWAITING_PAYMENT = OrderStatus::AWAITING_PAYMENT;
+    public const COMPLETED = OrderStatus::COMPLETED;
+    public const CANCELLED = OrderStatus::CANCELLED;
+
     protected $fillable = [
         'order_number',
         'user_id',

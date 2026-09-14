@@ -76,7 +76,7 @@ return new class extends Migration {
             $table->foreignId('order_id')->constrained();
             $table->string('license_key', 500)->unique(); // Encrypted/Hashed
 
-            $table->enum('status', ['active', 'inactive', 'expired', 'suspended'])->default('active');
+            $table->enum('status', ['active', 'inactive', 'expired', 'suspended', 'revoked'])->default('active');
             $table->enum('type', ['trial', 'full', 'subscription']);
 
             // Binding

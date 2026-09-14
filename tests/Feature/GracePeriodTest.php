@@ -31,7 +31,8 @@ class GracePeriodTest extends TestCase
             'user_id' => $user->id,
             'product_id' => $product->id,
             'order_id' => $order->id,
-            'license_key_hash' => hash('sha256', 'GRACEKEY'),
+            'license_key_hash' => hash('sha256', 'GRACEKEY' . 'salt-gracekey'),
+            'secret_salt' => 'salt-gracekey',
             'type' => 'subscription',
             'status' => 'active',
             'expires_at' => Carbon::now()->subDay(), // Expired yesterday
@@ -63,7 +64,8 @@ class GracePeriodTest extends TestCase
             'user_id' => $user->id,
             'product_id' => $product->id,
             'order_id' => $order->id,
-            'license_key_hash' => hash('sha256', 'EXPIREDKEY'),
+            'license_key_hash' => hash('sha256', 'EXPIREDKEY' . 'salt-expiredkey'),
+            'secret_salt' => 'salt-expiredkey',
             'type' => 'subscription',
             'status' => 'active',
             'expires_at' => Carbon::now()->subDays(10), // Expired long ago

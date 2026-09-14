@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Services\LicenseService;
+use App\Support\OfflineLicenseVerification;
 use Illuminate\Http\Request;
 
 class LicenseController extends Controller
@@ -41,8 +42,8 @@ class LicenseController extends Controller
             'type' => $result['license']->type,
             'license_type' => $result['license']->type,
             'expires_at' => $result['license']->expires_at ? $result['license']->expires_at->toIso8601String() : null,
-            'signature' => $result['signature'], // Hardware binding signature
             'offline_valid_until' => now()->addHours(24)->toIso8601String(),
+            'issued_at' => now()->toIso8601String(),
         ]);
     }
 
@@ -57,6 +58,7 @@ class LicenseController extends Controller
             'domain' => 'required|string',
             'ip' => 'required|ip',
             'fingerprint' => 'nullable|string|max:255',
+            'enforcement_mode' => 'nullable|string|in:standard,strict,active',
         ]);
 
         $license = $this->licenseService->findByKey($request->license_key);
@@ -67,6 +69,12 @@ class LicenseController extends Controller
 
         if ($license->status === 'suspended') {
             return response()->json(['status' => false, 'message' => 'License has been Suspended. Contact Support.'], 403);
+        }
+
+        $requestFingerprint = $request->filled('fingerprint') ? $request->string('fingerprint')->toString() : null;
+
+        if (!$this->licenseService->validateFingerprintBinding($license, $requestFingerprint)) {
+            return response()->json(['status' => false, 'message' => 'Environment Fingerprint Required or Mismatched'], 403);
         }
 
         if ($license->bound_domain && $this->normalizeDomain($license->bound_domain) !== $this->normalizeDomain($request->domain)) {
@@ -101,6 +109,7 @@ class LicenseController extends Controller
         $request->validate([
             'license_key' => 'required|string',
             'domain' => 'required|string',
+            'fingerprint' => 'nullable|string|max:255',
             'enforcement_mode' => 'nullable|string|in:standard,strict,active',
         ]);
 
@@ -108,6 +117,12 @@ class LicenseController extends Controller
 
         if (!$license) {
             return response()->json(['status' => false, 'message' => 'License Inactive/Invalid'], 403);
+        }
+
+        $requestFingerprint = $request->filled('fingerprint') ? $request->string('fingerprint')->toString() : null;
+
+        if (!$this->licenseService->validateFingerprintBinding($license, $requestFingerprint)) {
+            return response()->json(['status' => false, 'message' => 'Environment Fingerprint Required or Mismatched'], 403);
         }
 
         if ($license->bound_domain && $this->normalizeDomain($license->bound_domain) !== $this->normalizeDomain($request->domain)) {
@@ -162,6 +177,25 @@ class LicenseController extends Controller
         ]);
     }
 
+    public function publicKey()
+    {
+        $meta = OfflineLicenseVerification::buildPublicKeyMetadata();
+
+        if (empty($meta['public_key'])) {
+            return response()->json(['message' => 'Public key not configured'], 503);
+        }
+
+        return response()->json([
+            'key_id' => $meta['key_id'],
+            'active_key_id' => $meta['active_key_id'],
+            'algorithm' => $meta['algorithm'],
+            'public_key' => $meta['public_key'],
+            'available_keys' => $meta['available_keys'],
+            'rotation_overlap_days' => $meta['rotation_overlap_days'],
+            'revoked_key_ids' => $meta['revoked_key_ids'],
+        ]);
+    }
+
     public function history(Request $request)
     {
         $request->validate([
@@ -178,16 +212,43 @@ class LicenseController extends Controller
             ->orderBy('created_at', 'desc')
             ->get(['id', 'request_ip', 'request_domain', 'status', 'failure_reason', 'created_at']);
 
-        return response()->json($this->signResponse([
+        $history = $history->map(fn ($activation) => [
+            'id' => $activation->id,
+            'status' => $activation->status,
+            'created_at' => $activation->created_at,
+        ]);
+
+        return $this->successResponse([
             'license_type' => $license->type,
             'license_status' => $license->status,
             'history' => $history,
-        ]));
+        ]);
+    }
+
+    protected function fingerprintGraceWindowIsActive(): bool
+    {
+        if (!(bool) config('services.license.fingerprint_grace_mode', true)) {
+            return false;
+        }
+
+        $storedDeadline = \App\Models\SystemSetting::where('key', 'fingerprint_enforcement_deadline')->value('value');
+        $deadline = $storedDeadline
+            ? \Carbon\Carbon::parse($storedDeadline)
+            : \Carbon\Carbon::parse(config('services.license.fingerprint_enforcement_deadline', now()->addDays(90)->format('Y-m-d')));
+
+        return now()->lt($deadline);
     }
 
     protected function normalizeDomain(?string $domain): ?string
     {
         return in_array($domain, ['localhost', '127.0.0.1']) ? '127.0.0.1' : $domain;
+    }
+
+    protected function shouldEnforceFingerprint(Request $request): bool
+    {
+        $mode = strtolower((string) ($request->input('enforcement_mode') ?? 'standard'));
+
+        return in_array($mode, ['strict', 'active'], true);
     }
 
     protected function successResponse(array $data)
@@ -199,43 +260,40 @@ class LicenseController extends Controller
             'data' => $data,
             'payload' => $signed['payload'] ?? null,
             'server_signature' => $signed['server_signature'] ?? null,
+            'key_id' => $signed['key_id'] ?? null,
+            'algorithm' => $signed['algorithm'] ?? null,
         ])->header('Cache-Control', 'max-age=3600, private');
     }
 
     protected function signResponse(array $data)
     {
-        $payload = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $payload = OfflineLicenseVerification::canonicalizePayload($data);
         $privateKeyStr = config('services.license.signing_private_key');
 
         if (!$privateKeyStr) {
             \Log::error('LICENSE_SIGNING_PRIVATE_KEY is missing in configuration');
-            return ['payload' => base64_encode($payload), 'server_signature' => 'MISSING_KEY'];
+            abort(503, 'License signing is temporarily unavailable.');
         }
 
-        // Aggressively strip any whitespace/newlines
-        $privateKeyStr = str_replace(["\r", "\n", " ", "\t"], "", $privateKeyStr);
-        $decoded = base64_decode($privateKeyStr);
-
-        $privateKey = openssl_get_privatekey($decoded);
-        if (!$privateKey) {
-            // Fallback: try raw string if it wasn't base64 encoded
-            $privateKey = openssl_get_privatekey($privateKeyStr);
-        }
+        $decoded = base64_decode($privateKeyStr, true);
+        $privateKey = openssl_get_privatekey($decoded !== false ? $decoded : $privateKeyStr);
 
         if (!$privateKey) {
-            \Log::error('OpenSSL failed to parse private key: ' . openssl_error_string());
-            return ['payload' => base64_encode($payload), 'server_signature' => 'INVALID_KEY'];
+            \Log::error('OpenSSL failed to parse license signing key.');
+            abort(503, 'License signing is temporarily unavailable.');
         }
 
         $signature = '';
         if (!openssl_sign($payload, $signature, $privateKey, OPENSSL_ALGO_SHA256)) {
-            \Log::error('OpenSSL signing failed: ' . openssl_error_string());
-            return ['payload' => base64_encode($payload), 'server_signature' => 'SIGNING_FAILED'];
+            \Log::error('OpenSSL signing failed.');
+            abort(503, 'License signing is temporarily unavailable.');
         }
 
         return [
             'payload' => base64_encode($payload),
             'server_signature' => base64_encode($signature),
+            'key_id' => config('services.license.signing_key_id', 'corevisys-key-1'),
+            'algorithm' => config('services.license.signing_algorithm', 'RSA-SHA256'),
         ];
     }
 }

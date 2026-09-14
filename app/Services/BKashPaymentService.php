@@ -17,8 +17,8 @@ class BKashPaymentService
 
     public function __construct()
     {
-        $this->appKey = (string) SystemSetting::where('key', 'gateway_bkash_app_key')->value('value');
-        $this->appSecret = (string) SystemSetting::where('key', 'gateway_bkash_app_secret')->value('value');
+        $this->appKey = (string) config('services.bkash.app_key', '');
+        $this->appSecret = (string) config('services.bkash.app_secret', '');
         $this->baseUrl = $this->resolveBaseUrl();
     }
 
@@ -50,7 +50,7 @@ class BKashPaymentService
 
     protected function resolveCallbackUrl(): string
     {
-        $callbackUrl = route('orders.bkash.callback');
+        $callbackUrl = rtrim((string) config('app.url'), '/') . '/orders/bkash/callback';
         $parsed = parse_url($callbackUrl ?? '');
         $scheme = strtolower((string) ($parsed['scheme'] ?? ''));
         $host = strtolower((string) ($parsed['host'] ?? ''));

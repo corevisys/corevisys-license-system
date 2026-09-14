@@ -17,7 +17,6 @@ class License extends Model
         'user_id',
         'product_id',
         'order_id',
-        'license_key',
         'license_key_hash',
         'secret_salt',
         'status',
@@ -30,6 +29,7 @@ class License extends Model
         'bound_domain',
         'bound_ip',
         'bound_fingerprint',
+        'fingerprint_missing_grace',
         'activated_at',
         'expires_at',
         'grace_expires_at',
@@ -45,6 +45,7 @@ class License extends Model
         'last_check_at' => 'datetime',
         'next_billing_at' => 'datetime',
         'auto_renew' => 'boolean',
+        'fingerprint_missing_grace' => 'boolean',
     ];
 
     public function user()

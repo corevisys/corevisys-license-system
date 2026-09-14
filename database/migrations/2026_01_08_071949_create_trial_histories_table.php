@@ -12,6 +12,8 @@ return new class extends Migration {
     {
         Schema::create('trial_histories', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('license_id')->nullable()->constrained()->nullOnDelete();
             $table->string('fingerprint_hash')->nullable()->index();
             $table->string('email_hash')->nullable()->index();
             $table->string('ip_hash')->nullable()->index();

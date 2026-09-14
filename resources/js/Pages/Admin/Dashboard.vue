@@ -7,6 +7,7 @@ const props = defineProps({
     stats: Object,
     revenue_trend: Array,
     recent_activities: Array,
+    fingerprint_grace_licenses: Array,
 });
 
 // Polling for Real-Time Updates
@@ -118,6 +119,32 @@ const revenueChartPath = computed(() => {
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            <div class="bg-bg-dark/50 backdrop-blur-md p-10 rounded-[40px] shadow-soft-md border border-white/5 lg:col-span-2">
+                <div class="flex items-center justify-between mb-8">
+                    <h3 class="text-lg font-black text-adaptive tracking-tight">Fingerprint Grace Watchlist</h3>
+                    <span class="text-[10px] font-black uppercase tracking-widest text-text-muted">
+                        {{ fingerprint_grace_licenses?.length ?? 0 }} affected licenses
+                    </span>
+                </div>
+
+                <div v-if="fingerprint_grace_licenses && fingerprint_grace_licenses.length" class="space-y-3">
+                    <div v-for="license in fingerprint_grace_licenses" :key="license.id" class="flex items-center justify-between p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition-all border border-transparent hover:border-white/10 group">
+                        <div>
+                            <p class="text-sm font-black text-adaptive leading-tight">{{ license.product_name }}</p>
+                            <p class="text-[11px] text-text-muted font-medium">{{ license.user_name }} · {{ license.user_email }}</p>
+                            <p class="text-[11px] text-text-muted font-medium">Bound domain: {{ license.bound_domain || 'Not bound' }} · IP: {{ license.bound_ip || 'Not bound' }}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[9px] font-black uppercase tracking-tighter block mb-0.5 text-amber-500">Missing fingerprint</span>
+                            <span class="text-[9px] text-text-muted">{{ license.updated_at }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="text-center py-8 text-text-muted text-sm scale-95 opacity-60">
+                    No licenses currently flagged for fingerprint grace.
+                </div>
+            </div>
             <!-- Analytics Visualization Card -->
             <div class="bg-bg-dark/50 backdrop-blur-md p-10 rounded-[40px] shadow-soft-md border border-white/5">
                 <div class="flex items-center justify-between mb-8">

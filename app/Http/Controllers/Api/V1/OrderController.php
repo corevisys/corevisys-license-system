@@ -9,8 +9,11 @@ use App\Models\Product;
 use App\Services\BKashPaymentService;
 use App\Services\LicenseService;
 use App\Services\OrderFulfillmentService;
+use App\Services\ReceiptStorageService;
+use App\Support\OrderStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class OrderController extends Controller
 {
@@ -27,16 +30,21 @@ class OrderController extends Controller
     {
         // Simple order creation (Single Product for MVP)
         $request->validate([
-            'product_id' => 'required|exists:products,id',
+            'product_id' => ['required', 'exists:products,id'],
+            'product_price_id' => ['nullable', 'integer', Rule::exists('product_prices', 'id')->where(fn ($query) => $query->where('product_id', $request->input('product_id')))],
             'gateway' => 'required|string', // stripe, manual, etc
         ]);
 
         $user = $request->user();
         $product = Product::findOrFail($request->product_id);
 
-        // Find price (default to first full price found for MVP or passed in request)
-        // For robustness, request should send price_id, but we'll simplify.
-        $price = $product->prices()->where('type', 'full')->first();
+        if (!$product->is_active) {
+            return response()->json(['status' => false, 'message' => 'Product Unavailable'], 422);
+        }
+
+        $price = $request->filled('product_price_id')
+            ? $product->prices()->whereKey($request->integer('product_price_id'))->first()
+            : $product->prices()->where('type', 'full')->first();
         if (!$price) {
             return response()->json(['status' => false, 'message' => 'Product Unavailable'], 400);
         }
@@ -46,7 +54,7 @@ class OrderController extends Controller
             'user_id' => $user->id,
             'total_amount' => $price->amount,
             'currency' => $price->currency,
-            'status' => 'pending',
+            'status' => OrderStatus::PENDING,
             'payment_method' => $request->gateway,
         ]);
 
@@ -140,7 +148,7 @@ class OrderController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Payment verified. License generated.',
-                'license_key' => $fulfillment['license']->raw_key ?? $fulfillment['license']->license_key,
+                'license_reference' => 'XXXX-XXXX-' . substr($fulfillment['license']->license_key_hash ?? '', -4),
                 'transaction_id' => $result['trxID'] ?? $result['paymentID'],
             ]);
         }
@@ -160,10 +168,15 @@ class OrderController extends Controller
 
         $order = Order::where('id', $id)->where('user_id', $request->user()->id)->firstOrFail();
 
-        $file = $request->file('receipt');
+        if (in_array($order->status, [OrderStatus::COMPLETED, OrderStatus::CANCELLED], true)) {
+            return response()->json(['status' => false, 'message' => 'This order cannot accept a receipt.'], 409);
+        }
 
-        // Store the receipt on the local disk.
-        $path = $file->store('receipts', 'local');
+        if ($order->payments()->where('gateway', 'offline')->whereIn('status', [OrderStatus::PENDING, 'verified'])->exists()) {
+            return response()->json(['status' => false, 'message' => 'A receipt has already been submitted for this order.'], 409);
+        }
+
+        $file = $request->file('receipt');
 
         // Security: Duplicate Receipt Hashing Prevention
         $receiptHash = hash_file('sha256', $file->getPathname());
@@ -171,6 +184,9 @@ class OrderController extends Controller
         if ($exists) {
             return response()->json(['status' => false, 'message' => 'This receipt has already been submitted.'], 400);
         }
+
+        $storageService = app(ReceiptStorageService::class);
+        $path = $storageService->storeUploadedReceipt($file);
 
         // Create Payment Entry
         $exchangeRate = $this->currencyService->getRate($order->currency);
@@ -187,7 +203,7 @@ class OrderController extends Controller
             'receipt_hash' => $receiptHash
         ]);
 
-        $order->update(['status' => 'awaiting_payment']);
+        $order->update(['status' => OrderStatus::AWAITING_PAYMENT]);
 
         return response()->json([
             'status' => 'success',

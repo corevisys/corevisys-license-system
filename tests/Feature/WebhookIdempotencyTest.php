@@ -17,10 +17,7 @@ class WebhookIdempotencyTest extends TestCase
     {
         parent::setUp();
 
-        SystemSetting::create([
-            'key' => 'gateway_stripe_webhook_secret',
-            'value' => $this->secret,
-        ]);
+        config(['services.stripe.webhook_secret' => $this->secret]);
     }
 
     protected function signedRequest(array $data): array
@@ -78,5 +75,67 @@ class WebhookIdempotencyTest extends TestCase
 
         // Ensure only 1 record exists
         $this->assertDatabaseCount('processed_webhooks', 1);
+    }
+
+    public function test_invoice_payment_failed_webhook_starts_grace_and_marks_payment_failed(): void
+    {
+        $user = \App\Models\User::factory()->create();
+        $product = \App\Models\Product::factory()->create();
+        $order = \App\Models\Order::create([
+            'order_number' => 'STRIPE-FAIL-1',
+            'user_id' => $user->id,
+            'total_amount' => 10,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        \App\Models\Payment::create([
+            'user_id' => $user->id,
+            'order_id' => $order->id,
+            'gateway' => 'stripe',
+            'transaction_id' => 'pi_failed_test',
+            'amount' => 10,
+            'status' => 'pending',
+            'gateway_response' => [],
+        ]);
+
+        $license = \App\Models\License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'STRIPEFAIL' . 'salt-stripefail'),
+            'secret_salt' => 'salt-stripefail',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => now()->addDays(10),
+            'next_billing_at' => now()->addDays(10),
+            'gateway_subscription_id' => 'sub_123',
+        ]);
+
+        $payload = [
+            'id' => 'evt_inv_failed_123',
+            'type' => 'invoice.payment_failed',
+            'data' => ['object' => [
+                'id' => 'in_failed_123',
+                'subscription' => 'sub_123',
+                'payment_intent' => 'pi_failed_test',
+            ]],
+        ];
+
+        [$rawPayload, $sigHeader] = $this->signedRequest($payload);
+
+        $response = $this->call('POST', '/api/v1/webhooks/stripe', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_STRIPE_SIGNATURE' => $sigHeader,
+        ], $rawPayload);
+
+        $response->assertStatus(200)
+            ->assertJson(['message' => 'Processed']);
+
+        $license->refresh();
+        $this->assertNotNull($license->grace_expires_at);
+        $this->assertTrue($license->grace_expires_at->isFuture());
+        $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'transaction_id' => 'pi_failed_test', 'status' => 'failed']);
     }
 }

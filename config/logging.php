@@ -123,6 +123,13 @@ return [
             'handler' => NullHandler::class,
         ],
 
+        'alert' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/alerts.log'),
+            'level' => env('LOG_ALERT_LEVEL', 'critical'),
+            'replace_placeholders' => true,
+        ],
+
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],

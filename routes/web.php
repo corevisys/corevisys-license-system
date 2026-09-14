@@ -315,6 +315,8 @@ Route::post('/order/create', function (\Illuminate\Http\Request $request) {
         ->firstOrFail();
     $product = \App\Models\Product::findOrFail($request->product_id);
 
+    abort_unless($product->is_active, 422, 'Product Unavailable');
+
     // Create Order
     $order = \App\Models\Order::create([
         'order_number' => 'ORD-' . strtoupper(\Illuminate\Support\Str::random(10)),
@@ -402,13 +404,13 @@ Route::get('/orders/stripe/success', function (\Illuminate\Http\Request $request
                     'gateway_response' => $session->toArray()
                 ]);
 
-                // If result is returned, it means we just fulfilled it. Flash credentials.
+                // If result is returned, it means we just fulfilled it. Flash only non-sensitive references.
                 if ($result) {
                     $license = $result['license'];
                     $apiToken = $result['api_token'];
-                    
-                    if (isset($license->raw_key)) {
-                        session()->flash('new_license_key', $license->raw_key);
+
+                    if ($license) {
+                        session()->flash('new_license_key', 'XXXX-XXXX-' . substr($license->license_key_hash ?? '', -4));
                     }
                     if ($apiToken) {
                         session()->flash('new_api_token', $apiToken);
@@ -469,8 +471,8 @@ Route::get('/orders/bkash/callback', function (\Illuminate\Http\Request $request
                 $license = $fulfillment['license'];
                 $apiToken = $fulfillment['api_token'];
 
-                if (isset($license->raw_key)) {
-                    session()->flash('new_license_key', $license->raw_key);
+                if ($license) {
+                    session()->flash('new_license_key', 'XXXX-XXXX-' . substr($license->license_key_hash ?? '', -4));
                 }
                 if ($apiToken) {
                     session()->flash('new_api_token', $apiToken);
@@ -528,7 +530,6 @@ Route::middleware('auth')->group(function () {
                 'link_renew' => route('licenses.renew', $l->id),
                 'type' => ucfirst($l->type),
                 'key_preview' => 'XXXX-XXXX-' . substr($l->license_key_hash, -4),
-                'full_key' => $l->license_key ?? 'Contact Admin for Key', 
                 'status' => $l->status,
                 'expires_at' => $l->expires_at ? $l->expires_at->format('Y-m-d') : null,
                 'last_check_at' => $l->last_check_at ? $l->last_check_at->toDateTimeString() : null,
@@ -563,7 +564,6 @@ Route::middleware('auth')->group(function () {
             'license' => [
                 'id' => $license->id,
                 'product_name' => $license->product->name,
-                'license_key' => $license->license_key ?? 'Contact Admin for Key',
                 'status' => $license->status,
                 'bound_domain' => $license->bound_domain,
                 'bound_ip' => $license->bound_ip,
@@ -575,7 +575,7 @@ Route::middleware('auth')->group(function () {
         ]);
     })->name('licenses.config');
 
-    Route::post('/licenses/{id}/renew', function ($id) {
+    Route::post('/licenses/{id}/renew', function ($id, \Illuminate\Http\Request $request) {
         $license = \App\Models\License::where('user_id', auth()->id())->findOrFail($id);
         
         // Find the original price plan to renew
@@ -772,7 +772,7 @@ Route::middleware('auth')->group(function () {
         } elseif ($order->payment?->gateway === 'bkash') {
             return back()->with('info', 'bKash does not provide a hosted receipt. Please use the bKash app / SMS for your transaction details.');
         } elseif ($order->payment_method === 'offline' && $order->payment?->payment_proof_path) {
-             return \Illuminate\Support\Facades\Storage::disk('local')->download($order->payment->payment_proof_path);
+             return \Illuminate\Support\Facades\Storage::disk(config('receipt.storage_disk', 'local'))->download($order->payment->payment_proof_path);
         }
 
         return back()->with('error', 'Invoice not found.');
@@ -911,7 +911,7 @@ Route::middleware('auth')->group(function () {
                     'user_name' => $license->user->name,
                     'user_email' => $license->user->email,
                     'product_name' => $license->product->name,
-                    'license_key' => $license->license_key ?? 'Contact Admin for Key',
+                    'license_key' => $license->license_key_hash ? 'XXXX-XXXX-' . substr($license->license_key_hash, -4) : 'Contact Admin for Key',
                     'type' => ucfirst($license->type),
                     'status' => $license->status,
                     'enforcement_mode' => $license->enforcement_mode ?? 'active',
@@ -937,7 +937,7 @@ Route::middleware('auth')->group(function () {
             $license = \App\Models\License::findOrFail($id);
 
             $request->validate([
-                'status' => 'required|string|in:active,inactive,expired,suspended',
+                'status' => 'required|string|in:active,inactive,expired,suspended,revoked',
             ]);
 
             $oldStatus = $license->status;
@@ -1012,8 +1012,17 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/settings', function () {
             $settings = \App\Models\SystemSetting::all()->pluck('value', 'key');
+
+            $maskedSettings = $settings->mapWithKeys(function ($value, $key) {
+                if (str_contains($key, 'secret') || str_contains($key, 'token') || str_contains($key, 'password') || str_contains($key, 'key')) {
+                    return [$key => $value === '' ? '' : '******'];
+                }
+
+                return [$key => $value];
+            });
+
             return Inertia::render('Admin/Settings', [
-                'currentSettings' => $settings
+                'currentSettings' => $maskedSettings
             ]);
         })->name('admin.settings');
 

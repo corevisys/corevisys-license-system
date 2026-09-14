@@ -125,6 +125,30 @@ class LicenseService
 
     public function createLicense(Order $order, Product $product, string $type = 'full')
     {
+        $emailHash = $type === 'trial' ? hash('sha256', $order->user?->email ?? '') : null;
+        $requestIp = request()->ip();
+        $normalizedIp = is_string($requestIp) ? trim($requestIp) : null;
+        $isLocalIp = in_array($normalizedIp, [null, '127.0.0.1', '::1', 'localhost'], true);
+        $ipHash = $type === 'trial' && !$isLocalIp ? hash('sha256', $normalizedIp) : null;
+
+        // Upgrade 6: Trial Abuse Prevention
+        if ($type === 'trial') {
+            $exists = TrialHistory::where('email_hash', $emailHash)->exists();
+
+            if (!$isLocalIp && $ipHash) {
+                $exists = $exists || TrialHistory::where('ip_hash', $ipHash)->exists();
+            }
+
+            if ($exists) {
+                throw new \Exception('Trial limit exceeded for this user/environment.');
+            }
+        }
+
+        // Prevent duplicate fulfillment
+        if (License::where('order_id', $order->id)->exists()) {
+            return License::where('order_id', $order->id)->first();
+        }
+
         // Generate a unique license key
         // Format: [PROD_SLUG]-[RANDOM]-[RANDOM]-[RANDOM]
         $prefix = strtoupper(substr($product->slug ?? $product->name, 0, 4));
@@ -138,29 +162,6 @@ class LicenseService
         
         // Store SHA-256 Hash with salt
         $keyHash = hash('sha256', $keyPayload . $salt);
-
-        // Upgrade 6: Trial Abuse Prevention
-        if ($type === 'trial') {
-            $emailHash = hash('sha256', $order->user->email);
-            // Check History
-            $exists = TrialHistory::where('email_hash', $emailHash)
-                ->orWhere('ip_hash', hash('sha256', request()->ip()))
-                ->exists();
-
-            if ($exists) {
-                // Return null or throw exception? 
-                // Service should probably throw exception or handle gracefully.
-                // For now, let's throw plain exception
-                throw new \Exception('Trial limit exceeded for this user/environment.');
-            }
-
-            // Record Trial Start (Email/IP)
-            TrialHistory::create([
-                'email_hash' => $emailHash,
-                'ip_hash' => hash('sha256', request()->ip()), // Capture IP from request if available
-                'expires_at' => Carbon::now()->addMonths(6)
-            ]);
-        }
 
         // Calculate Expiry
         $expiresAt = null;
@@ -187,16 +188,10 @@ class LicenseService
             $expiresAt = Carbon::now()->addDays($billingPeriod);
         }
 
-        // Prevent duplicate fulfillment
-        if (License::where('order_id', $order->id)->exists()) {
-            return License::where('order_id', $order->id)->first();
-        }
-
         $license = License::create([
             'user_id' => $order->user_id,
             'product_id' => $product->id,
             'order_id' => $order->id,
-            'license_key' => $keyPayload,
             'license_key_hash' => $keyHash,
             'secret_salt' => $salt,
             'type' => $type,
@@ -206,41 +201,41 @@ class LicenseService
             'next_billing_at' => $type === 'subscription' ? $expiresAt : null,
         ]);
 
+        if ($type === 'trial') {
+            TrialHistory::create([
+                'user_id' => $order->user_id,
+                'license_id' => $license->id,
+                'email_hash' => $emailHash,
+                'ip_hash' => $ipHash,
+                'expires_at' => $license->expires_at ?? Carbon::now()->addMonths(6),
+            ]);
+        }
+
         $license->raw_key = $keyPayload; // Attach for immediate display
 
         return $license;
     }
 
     /**
-     * Resolve a license by its key.
+     * Resolve a license by key using only salted hashes.
      *
-     * Strategy (in order):
-     *  1. Plaintext `license_key` column (fast, indexed) - set by createLicense().
-     *  2. Unsalted SHA-256 hash - legacy records and test fixtures.
-     *  3. Salted scan - pre-migration records that only have hash(key + salt).
-     *     Only reached as a last resort to keep lookups O(1) in the normal case.
+     * Legacy plaintext `license_key` values must be migrated first via
+     * `php artisan license:migrate-legacy-keys`; rows that only have a raw
+     * SHA-256 hash and no `secret_salt` are rejected by design.
      */
     public function findByKey(string $key): ?License
     {
-        // 1. Fast path: plaintext license_key.
-        $license = License::where('license_key', $key)->first();
-        if ($license) {
-            return $license;
+        $saltyLicenses = License::whereNotNull('secret_salt')
+            ->whereNotNull('license_key_hash')
+            ->get();
+
+        foreach ($saltyLicenses as $license) {
+            if (hash_equals($license->license_key_hash, hash('sha256', $key . $license->secret_salt))) {
+                return $license;
+            }
         }
 
-        // 2. Legacy path: unsalted hash.
-        $license = License::where('license_key_hash', hash('sha256', $key))->first();
-        if ($license) {
-            return $license;
-        }
-
-        // 3. Salted scan (rare).
-        if (License::whereNotNull('secret_salt')->exists()) {
-            $license = License::whereNotNull('secret_salt')->get()
-                ->first(fn ($l) => hash_equals($l->license_key_hash, hash('sha256', $key . $l->secret_salt)));
-        }
-
-        return $license;
+        return null;
     }
 
     public function activate(string $key, string $domain, string $ip, ?string $fingerprint = null, ?string $enforcementMode = null)
@@ -332,9 +327,7 @@ class LicenseService
             // For now, if it's an existing binding, it's fine.
         }
 
-        // Environment Fingerprint Check (TOFU): once bound, a different fingerprint is rejected.
-        // Clients that omit the fingerprint parameter keep backward compatibility.
-        if ($license->bound_fingerprint && $fingerprint && $license->bound_fingerprint !== $fingerprint) {
+        if (!$this->validateFingerprintBinding($license, $fingerprint)) {
             $this->logActivation($license, $domain, $ip, 'failed', 'Environment Fingerprint Mismatch');
             return ['status' => false, 'message' => 'Environment Fingerprint Mismatch'];
         }
@@ -342,44 +335,29 @@ class LicenseService
         // Upgrade 6: Check Trial Fingerprint Abuse upon Activation (if fingerprint provided)
         if ($license->type === 'trial' && $fingerprint) {
             $fpHash = hash('sha256', $fingerprint);
-            $exists = TrialHistory::where('fingerprint_hash', $fpHash)->exists();
+            $existingHistory = TrialHistory::where('fingerprint_hash', $fpHash)
+                ->where(function ($query) use ($license) {
+                    $query->whereNull('license_id')
+                        ->orWhere('license_id', '!=', $license->id);
+                })
+                ->first();
 
-            if ($exists) {
-                // Optimization: Did WE just create this? 
-                // If we created it in createLicense, we didn't have fingerprint.
-                // So this is a new fingerprint usage. 
-                // If a previous trial used this fingerprint, BLOCK.
-                // BUT: What if this Current license is the *first* one mapping to this fingerprint?
-                // We need to associate this fingerprint with the CURRENT trial history record?
-                // Or create a new record?
-                // If 'exists' is true, it means SOMEONE ELSE used it.
-                // Unless it's OURSELVES (which is allowed).
-                // Logic: If (exists AND not associated with this license... but no link in TrialHistory to LicenseID).
-
-                // Simpler: TrialHistory blocks FUTURE trials.
-                // If I am activating a trial, and my fingerprint is in history...
-                // It means I already had a trial on this machine.
-                // So BLOCK.
-
-                // But wait, if I re-install app on same machine for the SAME trial license?
-                // Allowed.
-                // So we must check if this fingerprint usage is from a PREVIOUS trial.
-                // Use `expires_at` maybe? 
-                // Or checking if the fingerprint was used by a DIFFERENT User?
-                // Let's assume strict: "One trial per machine ever".
-
-                // However, we just started this trial. We didn't save fingerprint in createLicense.
-                // So 'exists' should be FALSE for the first time.
-                // If True -> Block.
-
+            if ($existingHistory) {
                 return ['status' => false, 'message' => 'Trial already used on this environment. Upgrade to full version.'];
             }
 
-            // Record Fingerprint for this trial
-            TrialHistory::create([
-                'fingerprint_hash' => $fpHash,
-                'expires_at' => $license->expires_at
-            ]);
+            // Record fingerprint usage in a dedicated row so email/IP history can be deleted
+            // without erasing the actual device-level abuse evidence.
+            TrialHistory::firstOrCreate(
+                [
+                    'license_id' => $license->id,
+                    'fingerprint_hash' => $fpHash,
+                ],
+                [
+                    'user_id' => $license->user_id,
+                    'expires_at' => $license->expires_at,
+                ]
+            );
         }
 
         // Success
@@ -392,7 +370,6 @@ class LicenseService
         return [
             'status' => true,
             'license' => $license,
-            'signature' => $this->generateSignature($license)
         ];
     }
 
@@ -407,12 +384,48 @@ class LicenseService
         ]);
     }
 
-    private function generateSignature($license)
+    public function validateFingerprintBinding(License $license, ?string $fingerprint): bool
     {
-        // Simple HMAC of status + expiry
-        $data = $license->status . '|' . ($license->expires_at ? $license->expires_at->toIso8601String() : 'lifetime');
-        return hash_hmac('sha256', $data, config('app.key'));
+        if ($license->bound_fingerprint === null) {
+            return true;
+        }
+
+        if ($fingerprint !== null && !hash_equals($license->bound_fingerprint, $fingerprint)) {
+            $license->update(['fingerprint_missing_grace' => false]);
+            return false;
+        }
+
+        if ($fingerprint === null) {
+            $allowsMissing = $this->fingerprintGraceWindowIsActive();
+            $license->update(['fingerprint_missing_grace' => $allowsMissing]);
+            return $allowsMissing;
+        }
+
+        $license->update(['fingerprint_missing_grace' => false]);
+        return true;
     }
+
+    protected function shouldEnforceFingerprint(?string $mode): bool
+    {
+        $normalizedMode = strtolower((string) ($mode ?? 'standard'));
+
+        return in_array($normalizedMode, ['strict', 'active'], true);
+    }
+
+    protected function fingerprintGraceWindowIsActive(): bool
+    {
+        if (!(bool) config('services.license.fingerprint_grace_mode', true)) {
+            return false;
+        }
+
+        $storedDeadline = \App\Models\SystemSetting::where('key', 'fingerprint_enforcement_deadline')->value('value');
+        $deadline = $storedDeadline
+            ? Carbon::parse($storedDeadline)
+            : Carbon::parse(config('services.license.fingerprint_enforcement_deadline', now()->addDays(90)->format('Y-m-d')));
+
+        return now()->lt($deadline);
+    }
+
     public function resetLicense(License $license, $admin, string $reason)
     {
         $oldDomain = $license->bound_domain;

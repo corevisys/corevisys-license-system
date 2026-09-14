@@ -17,7 +17,8 @@ Route::prefix('v1')->middleware([\App\Http\Middleware\CheckClientVersion::class]
     Route::post('/license/activate', [LicenseController::class, 'activate'])->middleware('throttle:activation');
     Route::post('/license/check', [LicenseController::class, 'check'])->middleware('throttle:activation');
     Route::post('/license/pulse', [LicenseController::class, 'pulse'])->middleware('throttle:pulse');
-    Route::post('/license/history', [LicenseController::class, 'history'])->middleware('throttle:pulse');
+    Route::get('/license/public-key', [LicenseController::class, 'publicKey']);
+    Route::post('/license/history', [LicenseController::class, 'history'])->middleware(['auth:sanctum', 'throttle:pulse']);
 });
 
 // Authenticated Routes (For User Dashboard / Checkout)
@@ -33,7 +34,9 @@ Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
     Route::post('/orders/{id}/upload-receipt', [OrderController::class, 'uploadReceipt']);
 
     // Admin Routes
-    Route::post('/admin/licenses/{id}/reset', [\App\Http\Controllers\Api\V1\Admin\LicenseResetController::class, 'reset']);
-    Route::get('/admin/analytics', [\App\Http\Controllers\Api\V1\Admin\AnalyticsController::class, 'index']);
-    Route::post('/admin/payments/{id}/verify', [\App\Http\Controllers\Api\V1\Admin\PaymentController::class, 'verify']);
+    Route::middleware('admin')->prefix('admin')->group(function () {
+        Route::post('/licenses/{id}/reset', [\App\Http\Controllers\Api\V1\Admin\LicenseResetController::class, 'reset']);
+        Route::get('/analytics', [\App\Http\Controllers\Api\V1\Admin\AnalyticsController::class, 'index']);
+        Route::post('/payments/{id}/verify', [\App\Http\Controllers\Api\V1\Admin\PaymentController::class, 'verify']);
+    });
 });

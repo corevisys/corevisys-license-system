@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Models\ProductPrice;
-use App\Models\SystemSetting;
 use Illuminate\Support\Facades\Log;
 use Stripe\Checkout\Session;
 use Stripe\Stripe;
@@ -18,9 +17,9 @@ class StripePaymentService
 
     protected function initStripe()
     {
-        $secretKey = SystemSetting::where('key', 'gateway_stripe_secret')->value('value');
+        $secretKey = (string) config('services.stripe.secret', '');
         if (!$secretKey) {
-            Log::error('Stripe Secret Key not found in SystemSettings.');
+            Log::error('Stripe Secret Key not configured in services.stripe.secret.');
             return;
         }
         Stripe::setApiKey($secretKey);
@@ -110,6 +109,6 @@ class StripePaymentService
      */
     public function getWebhookSecret(): ?string
     {
-        return SystemSetting::where('key', 'gateway_stripe_webhook_secret')->value('value');
+        return config('services.stripe.webhook_secret');
     }
 }

@@ -23,16 +23,17 @@ class CleanupExpiredLicenses extends Command
             ->get();
 
         foreach ($expiredLicenses as $license) {
-            // 'archived' is not a valid value in the licenses.status enum, so we
-            // keep the license as 'expired' and record the cleanup in the audit log.
             \App\Services\AuditService::log(
-                'license_cleanup_archived',
+                'license_cleanup_deleted',
                 $license,
                 ['status' => 'expired'],
-                ['status' => 'expired']
+                ['status' => 'deleted']
             );
+
+            $license->activations()->delete();
+            $license->delete();
         }
 
-        $this->info("Logged cleanup for {$expiredLicenses->count()} expired licenses.");
+        $this->info("Deleted {$expiredLicenses->count()} expired licenses and archived their audit history.");
     }
 }

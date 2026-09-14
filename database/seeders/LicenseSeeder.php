@@ -47,7 +47,6 @@ class LicenseSeeder extends Seeder
             'user_id' => $user->id,
             'product_id' => $product->id,
             'order_id' => $order->id,
-            'license_key' => $key,
             'license_key_hash' => hash('sha256', $key . $salt), // Correct hash with salt
             'secret_salt' => $salt,
             'type' => 'full',

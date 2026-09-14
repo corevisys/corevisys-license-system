@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Order;
+use App\Support\OrderStatus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class OrderFulfillmentService
@@ -20,60 +22,46 @@ class OrderFulfillmentService
      */
     public function fulfillOrder(Order $order, array $paymentData = [])
     {
-        if ($order->status === 'completed') {
+        if ($order->status === OrderStatus::COMPLETED) {
             Log::info("OrderFulfillment: Order {$order->order_number} already completed. Skipping.");
             return;
         }
 
-        // 1. Update Order Status
-        $order->update(['status' => 'completed']);
-
-        // 2. Update Payment Logic
-        if ($order->payment) {
-            $paymentUpdates = [
-                'status' => 'verified',
-            ];
-            if (!empty($paymentData['transaction_id'])) {
-                $paymentUpdates['transaction_id'] = $paymentData['transaction_id'];
-            }
-            if (!empty($paymentData['gateway_response'])) {
-                $paymentUpdates['gateway_response'] = $paymentData['gateway_response'];
-            }
-            $order->payment->update($paymentUpdates);
-        }
-
-        // 3. Generate License & API Token
         try {
-            $item = $order->items()->first();
-            if ($item) {
-                // Ensure duplicate check handles this in LicenseService, but createLicense is robust
-                $license = null;
-                switch ($order->type) {
-                    case 'renewal':
-                        $license = $this->licenseService->renewLicense($order, $item->product);
-                        break;
-                    case 'upgrade':
-                        $license = $this->licenseService->upgradeLicense($order, $item->product);
-                        break;
-                    case 'purchase':
-                    default:
-                        $license = $this->licenseService->createLicense($order, $item->product, $item->license_type ?? 'full');
-                        break;
+            return DB::transaction(function () use ($order, $paymentData) {
+                $item = $order->items()->first();
+                if (!$item) {
+                    throw new \RuntimeException("Order {$order->order_number} has no items to fulfill.");
                 }
-                
-                // Ensure API Token (Sanctum)
+
+                $license = match ($order->type) {
+                    'renewal' => $this->licenseService->renewLicense($order, $item->product),
+                    'upgrade' => $this->licenseService->upgradeLicense($order, $item->product),
+                    default => $this->licenseService->createLicense($order, $item->product, $item->license_type ?? 'full'),
+                };
+
                 $apiToken = $this->licenseService->getOrCreateApiToken($order->user);
+
+                $order->update(['status' => OrderStatus::COMPLETED]);
+
+                if ($order->payment) {
+                    $paymentUpdates = ['status' => 'verified'];
+                    if (!empty($paymentData['transaction_id'])) {
+                        $paymentUpdates['transaction_id'] = $paymentData['transaction_id'];
+                    }
+                    if (!empty($paymentData['gateway_response'])) {
+                        $paymentUpdates['gateway_response'] = $paymentData['gateway_response'];
+                    }
+                    $order->payment->update($paymentUpdates);
+                }
 
                 Log::info("OrderFulfillment: Fulfillment complete for Order {$order->order_number}", [
                     'license_id' => $license->id,
-                    'api_token_generated' => (bool)$apiToken
+                    'api_token_generated' => (bool) $apiToken,
                 ]);
 
-                return [
-                    'license' => $license,
-                    'api_token' => $apiToken
-                ];
-            }
+                return ['license' => $license, 'api_token' => $apiToken];
+            });
         } catch (\Exception $e) {
             Log::error("OrderFulfillment: License generation failed for Order {$order->order_number}", [
                 'error' => $e->getMessage()

@@ -15,7 +15,8 @@ test('pulse endpoint validates active license', function () {
         'product_id' => $product->id,
         'order_id' => $order->id,
         'type' => 'full',
-        'license_key_hash' => hash('sha256', 'VALID-KEY-PULSE'),
+        'license_key_hash' => hash('sha256', 'VALID-KEY-PULSE' . 'salt-pulse-valid'),
+        'secret_salt' => 'salt-pulse-valid',
         'status' => 'active',
         'bound_domain' => 'test.com',
         'expires_at' => now()->addMonth(),
@@ -32,7 +33,8 @@ test('pulse endpoint validates active license', function () {
 
 test('pulse endpoint rejects expired license no grace', function () {
     $license = \App\Models\License::factory()->create([
-        'license_key_hash' => hash('sha256', 'EXPIRED-KEY'),
+        'license_key_hash' => hash('sha256', 'EXPIRED-KEY' . 'salt-pulse-expired'),
+        'secret_salt' => 'salt-pulse-expired',
         'status' => 'active',
         'bound_domain' => 'expired.com',
         'expires_at' => now()->subDay(),

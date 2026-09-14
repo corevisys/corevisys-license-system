@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\License;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Support\OrderStatus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -52,20 +53,35 @@ class AnalyticsController extends Controller
                 'created_at' => $a->created_at->diffForHumans(),
             ]);
 
+        $fingerprintGraceLicenses = License::where('fingerprint_missing_grace', true)
+            ->with(['user', 'product'])
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(fn(License $license) => [
+                'id' => $license->id,
+                'user_name' => $license->user->name ?? 'Unknown User',
+                'user_email' => $license->user->email ?? 'Unknown Email',
+                'product_name' => $license->product->name ?? 'Unknown Product',
+                'bound_domain' => $license->bound_domain,
+                'bound_ip' => $license->bound_ip,
+                'updated_at' => $license->updated_at->diffForHumans(),
+            ]);
+
         return \Inertia\Inertia::render('Admin/Dashboard', [
             'stats' => [
                 'total_users' => \App\Models\User::count(),
                 'total_products' => \App\Models\Product::count(),
-                'total_orders' => \App\Models\Order::where('status', 'completed')->count(),
-                'total_revenue' => \App\Models\Order::where('status', 'completed')->sum('total_amount'),
+                'total_orders' => \App\Models\Order::where('status', OrderStatus::COMPLETED)->count(),
+                'total_revenue' => \App\Models\Order::where('status', OrderStatus::COMPLETED)->sum('total_amount'),
                 'running_projects' => $liveLicenses,
                 'active_licenses' => $activeLicenses,
                 'trial_licenses' => $trialLicenses,
                 'subscription_licenses' => $subLicenses,
-                'pending_orders' => \App\Models\Order::where('status', 'pending')->count(),
+                'pending_orders' => \App\Models\Order::where('status', OrderStatus::PENDING)->count(),
             ],
             'revenue_trend' => $revenueTrend,
             'recent_activities' => $recentActivities,
+            'fingerprint_grace_licenses' => $fingerprintGraceLicenses,
         ]);
     }
 
@@ -113,13 +129,13 @@ class AnalyticsController extends Controller
             'stats' => [
                 'total_users' => \App\Models\User::count(),
                 'total_products' => \App\Models\Product::count(),
-                'total_orders' => \App\Models\Order::where('status', 'completed')->count(),
-                'total_revenue' => \App\Models\Order::where('status', 'completed')->sum('total_amount'),
+                'total_orders' => \App\Models\Order::where('status', OrderStatus::COMPLETED)->count(),
+                'total_revenue' => \App\Models\Order::where('status', OrderStatus::COMPLETED)->sum('total_amount'),
                 'running_projects' => $liveLicenses,
                 'active_licenses' => $activeLicenses,
                 'trial_licenses' => $trialLicenses,
                 'subscription_licenses' => $subLicenses,
-                'pending_orders' => \App\Models\Order::where('status', 'pending')->count(),
+                'pending_orders' => \App\Models\Order::where('status', OrderStatus::PENDING)->count(),
             ],
             'revenue_trend' => $revenueTrend,
             'recent_activities' => $recentActivities,

@@ -12,10 +12,11 @@ class LicenseStateMachine
      * From => [To]
      */
     protected const TRANSITIONS = [
-        'inactive' => ['active', 'suspended'], // Activation or Admin Ban
-        'active' => ['expired', 'suspended'], // Expiry or Admin Ban
-        'expired' => ['active', 'suspended'], // Renewal or Admin Ban
-        'suspended' => ['active', 'expired'], // Admin Unban or Background Expiry
+        'inactive' => ['active', 'suspended', 'revoked'], // Activation or Admin Ban
+        'active' => ['expired', 'suspended', 'revoked'], // Expiry or Admin Ban
+        'expired' => ['active', 'suspended', 'revoked'], // Renewal or Admin Ban
+        'suspended' => ['active', 'expired', 'revoked'], // Admin Unban or Background Expiry
+        'revoked' => ['active', 'expired'], // Explicit recovery after administrative review
     ];
 
     public function transition(License $license, string $toStatus)

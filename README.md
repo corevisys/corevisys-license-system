@@ -1,59 +1,148 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# CoreVisys
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+CoreVisys is a Laravel-based licensing, billing, and subscription platform for software vendors. It manages license issuance, offline verification, payment gateways, order processing, notifications, and admin operations for a multi-product SaaS stack.
 
-## About Laravel
+## Project structure
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- `app/Http/Controllers/Api/V1` – API endpoints for licenses, orders, webhooks, and admin analytics
+- `app/Services` – orchestration for licenses, billing, fulfillment, and offline signing
+- `app/Models` – business data models including License, Order, Payment, User, and SystemSetting
+- `config/` – environment config for app, mail, logging, queue, and service providers
+- `database/migrations` – schema evolution for licensing, payments, and operational defaults
+- `resources/js` – admin dashboard and Inertia pages
+- `routes/` – web and API route registration
+- `tests/` – Pest feature and unit coverage for regressions
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Local development setup
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+1. Install PHP dependencies:
+   - `composer install`
+2. Install frontend dependencies:
+   - `npm install`
+3. Copy environment settings:
+   - `cp .env.example .env` (or create a local `.env` from your environment template)
+4. Generate the app key:
+   - `php artisan key:generate`
+5. Run migrations and seed default settings:
+   - `php artisan migrate --seed`
+6. Start the app processes:
+   - `php artisan serve`
+   - `npm run dev`
+7. For queue workers and scheduled jobs in a local or staging environment:
+   - `php artisan queue:work database --tries=3 --backoff=60`
+   - `php artisan schedule:work`
 
-## Learning Laravel
+## Current verification baseline
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+As of 2026-09-14, the project is verified with the full Laravel suite:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- `php artisan test`
+- Result: 90 passed, 281 assertions, 0 failed
 
-## Laravel Sponsors
+## Production-safe defaults
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+The project intentionally defaults to local-friendly and optional-provider-safe settings:
 
-### Premium Partners
+- `QUEUE_CONNECTION` defaults to a database queue and should be explicitly configured for production workers.
+- Gateway toggles default to off until actual credentials are configured.
+- Mail defaults to local-safe behavior unless a real external provider is configured.
+- Receipt storage defaults to local disk if no external object storage is configured.
+- Optional external alerting is opt-in via the `alert` log channel and webhook/Slack integrations.
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+Do not commit real secrets. Keep `.env` outside version control and place keys in your deployment secret manager.
 
-## Contributing
+## Core runtime configuration
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### License signing and offline verification
 
-## Code of Conduct
+Required keys in `.env`:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+- `LICENSE_SIGNING_PRIVATE_KEY`
+- `LICENSE_SIGNING_PUBLIC_KEY`
+- `LICENSE_SIGNING_PUBLIC_KEYS`
+- `LICENSE_SIGNING_KEY_ID`
+- `LICENSE_SIGNING_ALGORITHM`
 
-## Security Vulnerabilities
+Behavioral settings:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+- `FINGERPRINT_GRACE_MODE=true` enables the temporary grace window for missing fingerprints.
+- `FINGERPRINT_ENFORCEMENT_DEADLINE` sets the deadline after which missing fingerprints are treated as non-compliant when a bound fingerprint exists.
+
+### Payment gateways
+
+The system supports:
+
+- Stripe
+- bKash tokenized checkout
+- additional optional providers when enabled in configuration
+
+Keep each gateway disabled by default until corresponding credentials are added. This prevents a production outage caused by hard dependencies on paid providers.
+
+### Mail and receipt storage
+
+Recommended defaults:
+
+- `MAIL_MAILER=log` or another local-safe driver while validating the environment
+- `FILESYSTEM_DISK=local` unless object storage is explicitly configured
+
+The app exposes receipt handling through a dedicated storage service with validation, retention pruning, and scanning hooks. It is safe to start with local storage and scale to a managed object store later.
+
+## Deployment checklist
+
+Before production go-live:
+
+1. Set `APP_ENV=production`, `APP_DEBUG=false`, and a valid `APP_URL` with HTTPS.
+2. Configure real SMTP or transactional mail credentials.
+3. Run a queue worker in the background for database-backed jobs.
+4. Configure scheduler cron entries for renewal, expiry alerts, and cleanup jobs.
+5. Ensure `failed_jobs` is monitored and that critical alerts are routed to the alert log or a monitoring channel.
+6. Rotate license-signing keys with a proper overlap window before key retirement.
+7. Validate webhook secrets for Stripe and any payment provider you enable.
+
+## API overview
+
+Primary endpoints:
+
+- `POST /api/v1/license/activate`
+- `POST /api/v1/license/check`
+- `POST /api/v1/license/pulse`
+- `GET /api/v1/license/public-key`
+- `POST /api/v1/license/history`
+- `POST /api/v1/orders/create`
+- `POST /api/v1/orders/bkash/execute`
+- `POST /api/v1/webhooks/stripe`
+
+Responses use a signed payload wrapper for license validation endpoints when signing is configured.
+
+## Operational jobs
+
+The system includes scheduled and queued tasks for:
+
+- renewals
+- expiry notifications
+- cleanup of expired licenses after the grace period
+- webhook processing
+- failed-queue alerting
+
+Recommended cron items:
+
+- `php artisan schedule:run` via a system cron entry
+- queue workers running continuously in the background
+
+## Monitoring and alerts
+
+Critical failures should be logged through Laravel's `alert` channel. This channel is deliberately opt-in and local-friendly by default. In production, forward the channel to a centralized monitoring provider or a webhook-based alert platform.
+
+The app already logs queue failures and emits critical alerts for job failures, making it easier to detect outages without hard-wiring a third-party provider into local development defaults.
+
+## Security notes
+
+- License keys are hashed with a per-record salt before storage.
+- Legacy plaintext keys are intentionally rejected unless explicitly migrated.
+- Response payloads avoid exposing raw license keys after initial issuance.
+- Fingerprint enforcement is mode-aware and uses a temporary grace period before final enforcement becomes strict.
+- Key rotation metadata and revoked keys are tracked for offline signature verification.
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+CoreVisys is distributed under the MIT License.

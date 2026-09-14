@@ -21,10 +21,12 @@ class BKashPaymentTest extends TestCase
     {
         parent::setUp();
 
-        config(['app.url' => 'https://checkout.example.com']);
+        config([
+            'app.url' => 'https://checkout.example.com',
+            'services.bkash.app_key' => 'test-app-key',
+            'services.bkash.app_secret' => 'test-app-secret',
+        ]);
 
-        SystemSetting::create(['key' => 'gateway_bkash_app_key', 'value' => 'test-app-key']);
-        SystemSetting::create(['key' => 'gateway_bkash_app_secret', 'value' => 'test-app-secret']);
         SystemSetting::create(['key' => 'gateway_bkash_active', 'value' => '1']);
         SystemSetting::create(['key' => 'gateway_bkash_sandbox', 'value' => '1']);
     }
@@ -61,6 +63,34 @@ class BKashPaymentTest extends TestCase
 
             return Http::response(['statusCode' => '4040'], 404);
         });
+    }
+
+    public function test_bkash_service_ignores_database_secret_fallbacks()
+    {
+        config([
+            'services.bkash.app_key' => null,
+            'services.bkash.app_secret' => null,
+        ]);
+
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('bKash App Key / App Secret not configured.');
+
+        $this->fakeBkashApi();
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create(['currency' => 'BDT', 'amount' => 99.00, 'type' => 'full']);
+
+        $order = Order::create([
+            'order_number' => 'ORD-TEST0002',
+            'user_id' => $user->id,
+            'total_amount' => 99.00,
+            'currency' => 'BDT',
+            'status' => 'awaiting_payment',
+            'payment_method' => 'online',
+        ]);
+
+        app(BKashPaymentService::class)->createPayment($order, $product->prices->first());
     }
 
     public function test_create_payment_calls_grant_and_create_and_returns_bkash_url()

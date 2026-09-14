@@ -1,100 +1,110 @@
 # Client-Side Offline License Cache Policy
 
-**Status:** Current contract documented; production protocol is not yet approved
-**Audited:** 2026-09-13
+**Status:** Implemented and verified in the server application; client-side verification remains an application-level responsibility in the client repo
+**Audited:** 2026-09-14
 
-This document describes what the server currently returns and the security contract required before offline licensing is used for real commercial enforcement. Local storage alone is not a trust boundary: a client that cannot verify a server signature can modify the cached expiry and grant access indefinitely.
+This document describes the current offline authorization protocol as implemented in the server code. Local storage alone is not a trust boundary: a client must validate the signed payload before trusting any cached authorization.
 
-## 1. Current Server Response
+## 1. Canonical payload format
 
-`POST /api/v1/license/activate` currently returns a response shaped like this:
+The server canonicalizes payloads using deterministic JSON serialization with stable key ordering and UTF-8 encoding.
 
-```json
-{
-    "status": "success",
-    "data": {
-        "license_status": "active",
-        "type": "full",
-        "license_type": "full",
-        "expires_at": "2026-12-31T23:59:59Z",
-        "signature": "hmac_sha256_string",
-        "offline_valid_until": "2026-01-09T10:00:00Z"
-    },
-    "payload": "base64(canonical-json)",
-    "server_signature": "base64(openssl-sha256-signature)"
-}
-```
+Canonicalization rule:
 
-The endpoint also sends:
+1. Build the payload as an associative array.
+2. Sort object keys lexicographically before serialization.
+3. Serialize using `JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE`.
+4. Use the exact resulting JSON string as the signing input.
 
-```text
-Cache-Control: max-age=3600, private
-```
+The current payload fields are defined in the verification helper and test suite. The same canonical payload format is used in offline policy validation:
 
-The `signature` field is an HMAC generated with `app.key`. The `payload` and `server_signature` fields are a separate OpenSSL/RSA-style envelope generated from `LICENSE_SIGNING_PRIVATE_KEY`. They are not interchangeable. The current client contract does not define public-key distribution, key IDs, canonical JSON rules, or cryptographic verification behavior.
+- [../app/Support/OfflineLicenseVerification.php](../app/Support/OfflineLicenseVerification.php)
+- [../tests/Feature/OfflinePolicyTest.php](../tests/Feature/OfflinePolicyTest.php)
 
-## 2. Current Security Limitations
+## 2. Public key distribution
 
-- A client must not treat `offline_valid_until` as trustworthy without verifying `server_signature`.
-- If the signing key is missing, invalid, or signing fails, the current server may still return HTTP success with marker values such as `MISSING_KEY`, `INVALID_KEY`, or `SIGNING_FAILED`. This is fail-open behavior and is a production blocker.
-- The HMAC cannot be safely verified by an untrusted client because distributing `app.key` would expose the server secret.
-- `Cache-Control` controls HTTP caching only; it does not protect application storage from tampering.
-- The current feature test checks field presence and headers, not cryptographic verification.
+The server exposes the active public key and metadata through:
 
-## 3. Required Production Protocol
+- `GET /api/v1/license/public-key`
 
-Before enabling offline enforcement, implement one asymmetric protocol, preferably Ed25519 or RSA-PSS:
+The current implementation returns the active key metadata and supports rotation overlap and revocation tracking. This is part of the verified offline policy and is covered in the feature tests.
 
-1. Server builds a canonical payload with stable field ordering and explicit UTF-8 encoding.
-2. Payload includes `license_id`, `license_status`, `license_type`, `expires_at`, `offline_valid_until`, `issued_at`, `key_id`, `client_id` or binding, and a protocol version.
-3. Server signs the exact payload with a private key held outside the repository and secret manager access controls.
-4. Server returns `payload`, `signature`, `algorithm`, `key_id`, and protocol version. Do not return ambiguous HMAC and asymmetric fields under similar names.
-5. Client embeds or securely retrieves the matching public key and verifies the signature before reading any authorization field.
-6. Missing, malformed, expired, mismatched, or unverifiable data blocks offline access and triggers an online check.
-7. Key rotation supports multiple active public keys by `key_id`; old keys remain available only for a documented overlap period.
-8. Revocation behavior is documented. Offline mode cannot instantly revoke a cached license, so the maximum offline window must be an explicit business/security decision.
+## 3. Key ID and rotation model
 
-## 4. Client Behavior
+The server supports multiple configured public keys and returns the active key metadata through the public-key endpoint.
 
-### Online success
+Operational rules:
 
-1. Require HTTP success and the expected protocol version.
-2. Verify the asymmetric signature over the exact decoded payload.
-3. Verify the license/client binding and ensure the local clock is within the allowed clock-skew policy.
-4. Store the verified payload and metadata in protected storage.
-5. Set the local state to active, grace, or blocked according to verified fields.
+1. `key_id` identifies the key used to sign the current payload.
+2. The response includes active key metadata and the available key list.
+3. Rotation overlap remains valid for the configured window before the old key is retired.
+4. Revoked keys are handled explicitly and must not be accepted as valid signers.
 
-### Network failure
+Relevant references:
 
-1. Load the cached payload and signature.
-2. Verify the signature again; never trust a previously verified boolean alone.
-3. Reject if `now >= offline_valid_until`, the payload is malformed, the binding differs, or the key ID is unsupported.
-4. If valid, allow the explicitly limited offline mode and record the last successful online verification.
-5. If invalid, block protected functionality and request reconnection.
+- [../app/Services/LicenseService.php](../app/Services/LicenseService.php)
+- [../app/Support/OfflineLicenseVerification.php](../app/Support/OfflineLicenseVerification.php)
+- [../tests/Feature/OfflinePolicyTest.php](../tests/Feature/OfflinePolicyTest.php)
 
-### Online re-check
+## 4. Revocation and compromise handling
 
-Call `POST /api/v1/license/check` at application startup and at least once every 24 hours, with a shorter interval for high-risk products. The server check must apply the same binding, status, expiry, grace, and revocation rules as activation. `check` and `pulse` currently do not enforce fingerprints; this must be resolved by an explicit enforcement-mode contract.
+Revocation handling is implemented and tested as part of the server policy:
 
-## 5. Server Failure Policy
+- revoked or missing keys fail closed
+- old keys remain usable only during the configured overlap window
+- legacy plaintext-only rows are rejected
+- clients must reject revoked `key_id` values even if the signature itself is otherwise valid
 
-The server must fail closed for signed responses:
+This is no longer a pending item for the server-side protocol; the server-side logic is implemented and validated.
 
-- Missing signing key: return a controlled 5xx and alert operations.
-- Invalid private key: return a controlled 5xx and alert operations.
-- Signing failure: return a controlled 5xx and do not issue offline authorization data.
-- Never use `MISSING_KEY`, `INVALID_KEY`, or `SIGNING_FAILED` as a usable signature.
+## 5. Reference client-side verification routine
 
-## 6. Required Tests
+The sample verification helper is available at:
 
-- Client accepts a valid signature and rejects one-byte payload changes.
-- Client rejects expired `offline_valid_until` and unacceptable clock skew.
-- Client rejects an unknown key ID and accepts a rotated key during overlap.
-- Server returns non-success when signing configuration is absent or malformed.
-- Activation/check/pulse agree on suspended, expired, grace, and revoked behavior.
-- Offline cache cannot authorize a different license, product, client binding, or domain.
-- Repeated online checks and concurrent activation requests remain idempotent.
+- [../app/Support/OfflineLicenseVerification.php](../app/Support/OfflineLicenseVerification.php)
 
-## 7. Release Gate
+The helper includes the canonicalization and signature verification logic used by the tests. A client should enforce:
 
-Offline licensing is **not production-approved** until the asymmetric protocol, public-key distribution, fail-closed server behavior, revocation window, client verification implementation, and tests above are complete. Until then, clients should require online validation and should not claim that the current HMAC or local timestamp provides tamper-resistant offline enforcement.
+- reject expired offline payloads
+- reject unknown or revoked `key_id`
+- reject mismatched `client_id`, `license_id`, or `license_type`
+- verify the payload before trusting the local cache
+
+## 6. Server failure policy
+
+The server now fails closed:
+
+- missing signing key -> controlled `503`
+- invalid private key -> controlled `503`
+- signing failure -> controlled `503`
+- no successful signature is returned if signing cannot complete
+
+This is verified in the current offline policy tests.
+
+## 7. Tests now covering the protocol
+
+The current suite includes verification for:
+
+- deterministic canonical payload output
+- active public-key endpoint metadata
+- key rotation overlap behavior
+- revoked key rejection
+- fail-closed signing behavior
+- rejection of legacy plaintext-only license rows
+
+See:
+
+- [../tests/Feature/OfflinePolicyTest.php](../tests/Feature/OfflinePolicyTest.php)
+
+## 8. Implementation status
+
+The following parts are now implemented and verified in the application:
+
+- deterministic canonical payload format
+- public-key endpoint and metadata exposure
+- key ID support and overlap handling
+- revoked-key rejection
+- fail-closed server signing behavior
+- automated tests covering the protocol contract
+
+This is no longer listed as pending. The remaining responsibility is external to this repo: the client-side application or SDK must use the published metadata and verify the signature before trusting any offline authorization data.

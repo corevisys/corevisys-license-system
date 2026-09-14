@@ -16,12 +16,14 @@ class SystemSettingsSeeder extends Seeder
         SystemSetting::firstOrCreate(['key' => 'api_enabled'], ['value' => 'true']);
         SystemSetting::firstOrCreate(['key' => 'min_supported_version'], ['value' => '1.0.0']);
         SystemSetting::firstOrCreate(['key' => 'default_theme'], ['value' => 'dark-modern']);
+        SystemSetting::firstOrCreate(['key' => 'fingerprint_enforcement_deadline'], ['value' => env('FINGERPRINT_ENFORCEMENT_DEADLINE', now()->addDays(90)->format('Y-m-d'))]);
+        SystemSetting::firstOrCreate(['key' => 'fingerprint_grace_mode'], ['value' => env('FINGERPRINT_GRACE_MODE', true)]);
         
-        // Payment Gateways
-        SystemSetting::firstOrCreate(['key' => 'gateway_stripe_active'], ['value' => '1']);
+        // Payment Gateways (keep optional providers disabled until configured)
+        SystemSetting::firstOrCreate(['key' => 'gateway_stripe_active'], ['value' => '0']);
         SystemSetting::firstOrCreate(['key' => 'gateway_stripe_key'], ['value' => env('STRIPE_PUBLISHABLE_KEY', '')]);
         SystemSetting::firstOrCreate(['key' => 'gateway_stripe_secret'], ['value' => env('STRIPE_SECRET_KEY', '')]);
-        SystemSetting::firstOrCreate(['key' => 'gateway_bkash_active'], ['value' => '1']); // Enabling bKash by default for user to see
+        SystemSetting::firstOrCreate(['key' => 'gateway_bkash_active'], ['value' => '0']);
         SystemSetting::firstOrCreate(['key' => 'gateway_nagad_active'], ['value' => '0']);
         SystemSetting::firstOrCreate(['key' => 'gateway_rocket_active'], ['value' => '0']);
 

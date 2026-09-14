@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Queue\Events\JobFailed;
 use App\Models\User;
 
 class AppServiceProvider extends ServiceProvider
@@ -31,6 +34,21 @@ class AppServiceProvider extends ServiceProvider
 
         Gate::define('admin', function (User $user) {
             return $user->role === 'admin';
+        });
+
+        Queue::failing(function (JobFailed $event) {
+            $context = [
+                'connection' => $event->connectionName,
+                'queue' => $event->job->getQueue(),
+                'job' => $event->job->resolveName(),
+                'exception' => $event->exception?->getMessage(),
+            ];
+
+            Log::error('Queue job failed', $context);
+
+            if (config('logging.channels.alert')) {
+                Log::channel('alert')->critical('Queue job failed', $context);
+            }
         });
 
         // Rate Limiters

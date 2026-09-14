@@ -10,6 +10,8 @@ class TrialHistory extends Model
     use HasFactory;
 
     protected $fillable = [
+        'user_id',
+        'license_id',
         'fingerprint_hash',
         'email_hash',
         'ip_hash',
@@ -19,4 +21,14 @@ class TrialHistory extends Model
     protected $casts = [
         'expires_at' => 'datetime',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function license()
+    {
+        return $this->belongsTo(License::class);
+    }
 }

@@ -24,6 +24,7 @@ class LicenseFactory extends Factory
             'bound_domain' => null,
             'bound_ip' => null,
             'bound_fingerprint' => null,
+            'fingerprint_missing_grace' => false,
         ];
     }
 }

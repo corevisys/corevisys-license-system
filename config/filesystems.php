@@ -60,6 +60,24 @@ return [
             'report' => false,
         ],
 
+        'receipts' => [
+            'driver' => env('RECEIPTS_STORAGE_DRIVER', 'local'),
+            'root' => storage_path('app/receipts'),
+            'url' => env('RECEIPTS_URL', env('AWS_URL')),
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+
+            // Opt-in production override: set RECEIPTS_STORAGE_DRIVER=s3 and provide
+            // RECEIPTS_BUCKET/RECEIPTS_ENDPOINT/AWS_* values for durable S3-compatible storage.
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('RECEIPTS_BUCKET', env('AWS_BUCKET')),
+            'endpoint' => env('RECEIPTS_ENDPOINT', env('AWS_ENDPOINT')),
+            'use_path_style_endpoint' => env('RECEIPTS_USE_PATH_STYLE_ENDPOINT', env('AWS_USE_PATH_STYLE_ENDPOINT', false)),
+        ],
+
     ],
 
     /*
