@@ -1,9 +1,12 @@
 <script setup>
+import Alert from '@/Components/UI/Alert.vue';
+import Badge from '@/Components/UI/Badge.vue';
+import Button from '@/Components/UI/Button.vue';
+import Card from '@/Components/UI/Card.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import Modal from '@/Components/Modal.vue';
-import SecondaryButton from '@/Components/SecondaryButton.vue';
 
 const props = defineProps({
     products: {
@@ -67,7 +70,7 @@ const gateways = computed(() => {
         label: isFree.value ? 'Free License' : 'Offline',
         desc: isFree.value ? 'No payment required' : 'Bank transfer / manual — verified by admin',
         classes: 'border-white/10 bg-white/5 text-text-muted',
-        dot: 'bg-slate-500',
+        dot: 'bg-text-faint',
     });
 
     return list;
@@ -99,109 +102,111 @@ const proceedToPayment = () => {
 
     <AuthenticatedLayout>
         <div class="mb-12">
-            <h2 class="text-4xl font-black text-adaptive tracking-tight mb-2">License Store</h2>
-            <p class="text-text-muted font-medium italic">Pick a product, choose a plan, and activate your license in seconds.</p>
+            <Badge status="success" class="!rounded-full px-3 py-1.5">License Store</Badge>
+            <h2 class="mt-4 text-4xl font-black tracking-tight text-text-primary">License Store</h2>
+            <p class="mt-2 text-sm text-text-muted">Pick a product, choose a plan, and activate your license in seconds.</p>
         </div>
 
-        <div v-if="products.length === 0" class="bg-bg-dark/50 backdrop-blur-md rounded-[40px] shadow-soft-md border border-white/5 p-20 text-center">
-            <p class="text-sm font-bold text-text-muted uppercase tracking-[0.2em]">No products available yet</p>
+        <div v-if="products.length === 0" class="rounded-[32px] border border-panel-line bg-panel-2 p-20 text-center">
+            <p class="text-sm font-black uppercase tracking-[0.2em] text-text-muted">No products available yet</p>
         </div>
 
-        <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-            <div
+        <div v-else class="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-3">
+            <Card
                 v-for="product in products"
                 :key="product.id"
-                class="bg-bg-dark/50 backdrop-blur-md rounded-[40px] shadow-soft-md border border-white/5 p-8 flex flex-col"
+                class="flex flex-col p-8"
             >
-                <div class="flex items-center justify-between mb-6">
-                    <div class="w-12 h-12 bg-brand-teal/10 border border-brand-teal/20 rounded-2xl flex items-center justify-center text-brand-teal">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                <div class="mb-6 flex items-center justify-between">
+                    <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal/10 text-teal">
+                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
                     </div>
-                    <span class="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase tracking-widest border border-emerald-500/20">Available</span>
+                    <Badge status="success" class="!rounded-full !px-3 !py-1 !text-[10px]">Available</Badge>
                 </div>
 
-                <h3 class="text-2xl font-black text-adaptive mb-2">{{ product.name }}</h3>
-                <p v-if="product.description" class="text-sm text-text-muted leading-relaxed mb-6">{{ product.description }}</p>
+                <h3 class="mb-2 text-2xl font-black text-text-primary">{{ product.name }}</h3>
+                <p v-if="product.description" class="mb-6 text-sm leading-relaxed text-text-muted">{{ product.description }}</p>
 
-                <div class="space-y-4 mt-auto">
+                <div class="mt-auto space-y-4">
                     <div
                         v-for="price in product.prices"
                         :key="price.id"
-                        class="p-6 border border-white/5 rounded-[24px] hover:border-brand-teal/40 transition-all"
+                        class="rounded-[24px] border border-panel-line bg-panel-2 p-5 transition-all hover:border-amber/50"
                     >
-                        <div class="flex items-baseline justify-between mb-3">
-                            <span class="text-[10px] font-black uppercase tracking-widest text-text-muted">{{ price.type }}</span>
-                            <div>
-                                <span class="text-xl font-black text-adaptive">{{ formatAmount(price.amount) }} {{ price.currency }}</span>
+                        <div class="mb-3 flex items-center justify-between gap-3">
+                            <span class="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">{{ price.type }}</span>
+                            <Badge status="default" class="!rounded-full !px-2 !py-1 !text-[9px]">{{ price.billing_period >= 365 ? 'Annual' : 'Plan' }}</Badge>
+                        </div>
+                        <div class="mb-4 flex items-end justify-between gap-3">
+                            <div class="text-xl font-black text-text-primary">{{ formatAmount(price.amount) }} {{ price.currency }}</div>
+                            <div v-if="price.billing_period" class="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                                {{ price.billing_period >= 365 ? 'Yearly' : 'Monthly' }}
                             </div>
                         </div>
-                        <div v-if="price.billing_period" class="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-4">
-                            {{ price.billing_period >= 365 ? 'Yearly' : 'Monthly' }} billing
-                        </div>
-                        <button
-                            @click="openCheckout(product, price)"
-                            class="w-full py-3 bg-brand-teal text-slate-900 text-xs font-black uppercase tracking-widest rounded-xl hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-brand-teal/20"
-                        >
+                        <Button type="button" variant="primary" class="w-full justify-center" @click="openCheckout(product, price)">
                             Purchase
-                        </button>
+                        </Button>
                     </div>
                 </div>
-            </div>
+            </Card>
         </div>
 
         <Modal :show="!!checkout" @close="checkout = null">
-            <div class="p-8 relative">
-                <h3 class="text-2xl font-black text-adaptive mb-1">Checkout</h3>
-                <p v-if="checkout" class="text-xs text-text-muted font-bold uppercase tracking-widest mb-6">
+            <div class="relative p-8">
+                <h3 class="mb-1 text-2xl font-black text-text-primary">Checkout</h3>
+                <p v-if="checkout" class="mb-6 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
                     {{ checkout.product.name }} — {{ checkout.price.type }} plan
                 </p>
 
-                <div v-if="checkout" class="bg-white/5 border border-white/10 rounded-[24px] p-6 mb-6 flex items-center justify-between">
+                <Alert v-if="submitting" variant="success" class="mb-6">Processing your order…</Alert>
+
+                <div v-if="checkout" class="mb-6 flex items-center justify-between rounded-[24px] border border-panel-line bg-panel-2 p-6">
                     <div>
-                        <div class="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Total Due</div>
-                        <div class="text-3xl font-black text-adaptive">
+                        <div class="mb-1 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Total Due</div>
+                        <div class="font-mono text-3xl font-black text-text-primary">
                             {{ formatAmount(checkout.price.amount) }} {{ checkout.price.currency }}
                         </div>
                     </div>
                     <div class="text-right">
-                        <div class="text-[10px] font-black text-text-muted uppercase tracking-widest mb-1">Billing</div>
-                        <div class="text-sm font-bold text-adaptive text-right">
+                        <div class="mb-1 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Billing</div>
+                        <div class="text-sm font-bold text-text-primary">
                             {{ checkout.price.billing_period ? (checkout.price.billing_period >= 365 ? 'Yearly' : 'Monthly') : 'One-time' }}
                         </div>
                     </div>
                 </div>
 
-                <p class="text-[10px] font-black text-text-muted uppercase tracking-widest mb-3">Payment Method</p>
-                <div class="space-y-3 mb-8">
+                <p class="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Payment Method</p>
+                <div class="mb-8 space-y-3">
                     <button
                         v-for="gateway in gateways"
                         :key="gateway.id"
                         @click="selectedGateway = gateway.id"
-                        class="w-full p-5 rounded-[20px] border text-left transition-all flex items-center justify-between"
+                        class="flex w-full items-center justify-between rounded-[20px] border p-5 text-left transition-all"
                         :class="selectedGateway === gateway.id
-                            ? gateway.classes + ' ring-2 ring-offset-0 ring-brand-teal/40'
-                            : 'border-white/5 bg-white/5 text-text-muted hover:border-white/15'"
+                            ? 'border-amber bg-panel-2 ring-1 ring-amber/30'
+                            : 'border-panel-line bg-panel-2 text-text-muted hover:border-amber/50 hover:bg-panel-1'"
                     >
                         <div class="flex items-center gap-4">
-                            <span class="w-3 h-3 rounded-full" :class="selectedGateway === gateway.id ? gateway.dot : 'bg-slate-700'"></span>
+                            <span class="h-3 w-3 rounded-full" :class="selectedGateway === gateway.id ? gateway.dot : 'bg-text-faint'" />
                             <div>
-                                <div class="font-black text-sm">{{ gateway.label }}</div>
-                                <div class="text-[10px] font-bold text-text-muted uppercase tracking-widest mt-0.5">{{ gateway.desc }}</div>
+                                <div class="text-sm font-black text-text-primary">{{ gateway.label }}</div>
+                                <div class="mt-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">{{ gateway.desc }}</div>
                             </div>
                         </div>
-                        <svg v-if="selectedGateway === gateway.id" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
+                        <svg v-if="selectedGateway === gateway.id" class="h-5 w-5 text-amber" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
                     </button>
                 </div>
 
                 <div class="flex items-center justify-end gap-4">
-                    <SecondaryButton @click="checkout = null">Cancel</SecondaryButton>
-                    <button
+                    <Button type="button" variant="secondary" @click="checkout = null">Cancel</Button>
+                    <Button
+                        type="button"
+                        variant="primary"
                         :disabled="!selectedGateway || submitting"
                         @click="proceedToPayment"
-                        class="px-8 py-3 bg-brand-teal text-slate-900 text-xs font-black uppercase tracking-widest rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-brand-teal/20 disabled:opacity-40 disabled:pointer-events-none"
                     >
                         {{ submitting ? 'Processing...' : (isFree ? 'Get License' : 'Proceed to Payment') }}
-                    </button>
+                    </Button>
                 </div>
             </div>
         </Modal>

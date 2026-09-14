@@ -1,7 +1,10 @@
 <script setup>
+import Badge from '@/Components/UI/Badge.vue';
+import Button from '@/Components/UI/Button.vue';
+import Card from '@/Components/UI/Card.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
-import { onMounted, onUnmounted, computed } from 'vue';
+import { computed, onMounted, onUnmounted } from 'vue';
 
 const props = defineProps({
     stats: Object,
@@ -10,7 +13,6 @@ const props = defineProps({
     fingerprint_grace_licenses: Array,
 });
 
-// Polling for Real-Time Updates
 let pollInterval = null;
 
 onMounted(() => {
@@ -18,40 +20,31 @@ onMounted(() => {
         router.reload({
             only: ['stats', 'revenue_trend', 'recent_activities'],
             preserveScroll: true,
-            preserveState: true
+            preserveState: true,
         });
-    }, 30000); // 30 seconds for dashboard
+    }, 30000);
 });
 
 onUnmounted(() => {
     if (pollInterval) clearInterval(pollInterval);
 });
 
-// Chart Logic
 const revenueChartPath = computed(() => {
     if (!props.revenue_trend || props.revenue_trend.length === 0) return '';
-    
-    // Normalize data
+
     const data = props.revenue_trend.map(Number);
-    const max = Math.max(...data, 1); // Avoid division by zero
+    const max = Math.max(...data, 1);
     const min = 0;
-    
-    // SVG Dimensions (Match the viewbox or container aspect ratio)
-    // Area is 100% width, height is ~160px (h-40) in container. 
-    // Let's use 100x100 coordinate system for simplicity
     const width = 100;
     const height = 100;
-    
     const stepX = width / (data.length - 1);
-    
-    // Build path points
+
     const points = data.map((val, index) => {
         const x = index * stepX;
         const y = height - ((val - min) / (max - min)) * height;
         return `${x},${y}`;
     });
 
-    // Close the area for fill effect (bottom-right -> bottom-left)
     return `M0,${height} L${points.join(' L')} L${width},${height} Z`;
 });
 </script>
@@ -60,103 +53,85 @@ const revenueChartPath = computed(() => {
     <Head title="Admin Dashboard" />
 
     <AuthenticatedLayout>
-        <!-- Page Header -->
-        <div class="mb-12 flex items-center justify-between">
+        <div class="mb-12 flex items-center justify-between gap-4">
             <div>
-                <h2 class="text-4xl font-black text-adaptive tracking-tight mb-2">Systems Overview</h2>
-                <p class="text-text-muted font-medium italic">High-altitude view of global license performance.</p>
+                <Badge status="success" class="!rounded-full px-3 py-1.5">Systems overview</Badge>
+                <h2 class="mt-4 text-4xl font-black tracking-tight text-text-primary">Global operations</h2>
+                <p class="mt-2 text-sm text-text-muted">High-altitude view of global license performance.</p>
             </div>
-            <div class="flex gap-4">
-                <button class="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs font-bold text-text-muted hover:bg-white/10 transition-all uppercase tracking-widest shadow-soft-md">Export PDF</button>
-                <button class="px-6 py-3 bg-brand-teal text-slate-900 rounded-2xl text-xs font-bold hover:scale-105 transition-all shadow-lg shadow-brand-teal/20 uppercase tracking-widest">Global Settings</button>
+            <div class="flex gap-3">
+                <Button type="button" variant="secondary">Export PDF</Button>
+                <Button type="button" variant="primary">Global settings</Button>
             </div>
         </div>
 
-        <!-- KPI Command Center -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-16">
-            <div class="bg-bg-dark/50 backdrop-blur-md p-8 rounded-[32px] shadow-soft-md border border-white/5 flex flex-col items-center text-center">
-                <span class="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-4">Total Revenue</span>
-                <p class="text-4xl font-black text-adaptive mb-4">${{ stats.total_revenue.toLocaleString() }}</p>
-                <div class="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 rounded-full">
-                    <svg class="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 15l7-7 7 7" /></svg>
-                    <span class="text-[10px] font-black text-emerald-600 dark:text-emerald-400 tracking-tighter">Live</span>
-                </div>
-            </div>
+        <div class="mb-16 grid grid-cols-1 gap-8 md:grid-cols-4">
+            <Card class="flex flex-col items-center p-8 text-center">
+                <span class="mb-4 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Total revenue</span>
+                <p class="mb-4 text-4xl font-black text-text-primary">${{ stats.total_revenue.toLocaleString() }}</p>
+                <Badge status="success">Live</Badge>
+            </Card>
 
-            <div class="bg-bg-dark/50 backdrop-blur-md p-8 rounded-[32px] shadow-soft-md border border-white/5 flex flex-col items-center text-center">
-                <span class="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-4">Active Licenses</span>
-                <p class="text-4xl font-black text-adaptive mb-2">{{ stats.active_licenses }}</p>
+            <Card class="flex flex-col items-center p-8 text-center">
+                <span class="mb-4 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Active licenses</span>
+                <p class="mb-2 text-4xl font-black text-text-primary">{{ stats.active_licenses }}</p>
                 <div class="flex gap-2">
-                     <div class="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 dark:bg-indigo-900/20 rounded-full">
-                        <span class="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 tracking-tight">Prob: {{ stats.trial_licenses }}</span>
-                    </div>
-                    <div class="flex items-center gap-1.5 px-3 py-1 bg-purple-50 dark:bg-purple-900/20 rounded-full">
-                        <span class="text-[9px] font-bold text-purple-600 dark:text-purple-400 tracking-tight">Sub: {{ stats.subscription_licenses }}</span>
-                    </div>
+                    <Badge status="default">Prob: {{ stats.trial_licenses }}</Badge>
+                    <Badge status="default">Sub: {{ stats.subscription_licenses }}</Badge>
                 </div>
-               
-            </div>
+            </Card>
 
-            <div class="bg-bg-dark/50 backdrop-blur-md p-8 rounded-[32px] shadow-soft-md border border-white/5 flex flex-col items-center text-center">
-                <span class="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-4">Pending Orders</span>
-                <p class="text-4xl font-black text-amber-500 mb-4">{{ stats.pending_orders }}</p>
-                <div class="flex items-center gap-1.5 px-3 py-1 bg-amber-50 dark:bg-amber-900/20 rounded-full">
-                    <span class="text-[10px] font-black text-amber-600 dark:text-amber-400 tracking-tighter uppercase whitespace-nowrap">Requires Action</span>
-                </div>
-            </div>
+            <Card class="flex flex-col items-center p-8 text-center">
+                <span class="mb-4 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Pending orders</span>
+                <p class="mb-4 text-4xl font-black text-amber">{{ stats.pending_orders }}</p>
+                <Badge status="amber">Requires action</Badge>
+            </Card>
 
-            <div class="bg-bg-dark/50 backdrop-blur-md p-8 rounded-[32px] shadow-soft-md border border-white/5 flex flex-col items-center text-center">
-                <span class="text-[10px] font-black text-text-muted uppercase tracking-[0.2em] mb-4">Currently Running</span>
-                <p class="text-4xl font-black text-brand-teal mb-4">{{ stats.running_projects }}</p>
-                <div class="flex items-center gap-1.5 px-3 py-1 bg-brand-teal/10 rounded-full">
-                    <span class="relative flex h-2 w-2">
-                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-teal opacity-75"></span>
-                        <span class="relative inline-flex rounded-full h-2 w-2 bg-brand-teal"></span>
-                    </span>
-                    <span class="text-[10px] font-black text-brand-teal tracking-tighter uppercase whitespace-nowrap">Live Connections</span>
-                </div>
-            </div>
+            <Card class="flex flex-col items-center p-8 text-center">
+                <span class="mb-4 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Currently running</span>
+                <p class="mb-4 text-4xl font-black text-teal">{{ stats.running_projects }}</p>
+                <Badge status="success">Live connections</Badge>
+            </Card>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
-            <div class="bg-bg-dark/50 backdrop-blur-md p-10 rounded-[40px] shadow-soft-md border border-white/5 lg:col-span-2">
-                <div class="flex items-center justify-between mb-8">
-                    <h3 class="text-lg font-black text-adaptive tracking-tight">Fingerprint Grace Watchlist</h3>
-                    <span class="text-[10px] font-black uppercase tracking-widest text-text-muted">
+        <div class="grid grid-cols-1 gap-10 lg:grid-cols-2">
+            <Card class="lg:col-span-2 p-8">
+                <div class="mb-8 flex items-center justify-between">
+                    <h3 class="text-lg font-black tracking-tight text-text-primary">Fingerprint grace watchlist</h3>
+                    <span class="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
                         {{ fingerprint_grace_licenses?.length ?? 0 }} affected licenses
                     </span>
                 </div>
 
                 <div v-if="fingerprint_grace_licenses && fingerprint_grace_licenses.length" class="space-y-3">
-                    <div v-for="license in fingerprint_grace_licenses" :key="license.id" class="flex items-center justify-between p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition-all border border-transparent hover:border-white/10 group">
+                    <div v-for="license in fingerprint_grace_licenses" :key="license.id" class="flex items-center justify-between rounded-2xl border border-panel-line bg-panel-2 p-4 transition hover:border-amber/25">
                         <div>
-                            <p class="text-sm font-black text-adaptive leading-tight">{{ license.product_name }}</p>
-                            <p class="text-[11px] text-text-muted font-medium">{{ license.user_name }} · {{ license.user_email }}</p>
-                            <p class="text-[11px] text-text-muted font-medium">Bound domain: {{ license.bound_domain || 'Not bound' }} · IP: {{ license.bound_ip || 'Not bound' }}</p>
+                            <p class="text-sm font-black leading-tight text-text-primary">{{ license.product_name }}</p>
+                            <p class="text-[11px] font-medium text-text-muted">{{ license.user_name }} · {{ license.user_email }}</p>
+                            <p class="text-[11px] font-medium text-text-muted">Bound domain: {{ license.bound_domain || 'Not bound' }} · IP: {{ license.bound_ip || 'Not bound' }}</p>
                         </div>
                         <div class="text-right">
-                            <span class="text-[9px] font-black uppercase tracking-tighter block mb-0.5 text-amber-500">Missing fingerprint</span>
-                            <span class="text-[9px] text-text-muted">{{ license.updated_at }}</span>
+                            <div class="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-amber">Missing fingerprint</div>
+                            <div class="text-[9px] text-text-muted">{{ license.updated_at }}</div>
                         </div>
                     </div>
                 </div>
 
-                <div v-else class="text-center py-8 text-text-muted text-sm scale-95 opacity-60">
+                <div v-else class="py-8 text-center text-sm text-text-muted opacity-60">
                     No licenses currently flagged for fingerprint grace.
                 </div>
-            </div>
-            <!-- Analytics Visualization Card -->
-            <div class="bg-bg-dark/50 backdrop-blur-md p-10 rounded-[40px] shadow-soft-md border border-white/5">
-                <div class="flex items-center justify-between mb-8">
-                    <h3 class="text-lg font-black text-adaptive tracking-tight">Revenue Scale (30 Days)</h3>
+            </Card>
+
+            <Card class="p-8">
+                <div class="mb-8 flex items-center justify-between">
+                    <h3 class="text-lg font-black tracking-tight text-text-primary">Revenue scale (30 days)</h3>
                     <div class="flex items-center gap-2">
-                        <span class="w-2.5 h-2.5 rounded-full bg-brand-teal text-glow-teal"></span>
-                        <span class="text-[10px] font-bold text-text-muted uppercase tracking-widest">Calculated Trajectory</span>
+                        <span class="h-2.5 w-2.5 rounded-full bg-teal" />
+                        <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted">Calculated trajectory</span>
                     </div>
                 </div>
-                <!-- Dynamic Area Chart -->
-                <div class="h-72 w-full bg-white/5 rounded-[32px] relative overflow-hidden group">
-                    <svg class="absolute bottom-0 left-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                <div class="relative h-72 w-full overflow-hidden rounded-[24px] border border-panel-line bg-panel-2">
+                    <svg class="absolute inset-0 h-full w-full" preserveAspectRatio="none" viewBox="0 0 100 100">
                         <path :d="revenueChartPath" fill="url(#brand-grad)" class="transition-all duration-1000 ease-in-out" />
                         <defs>
                             <linearGradient id="brand-grad" x1="0" x2="0" y1="0" y2="1">
@@ -165,46 +140,42 @@ const revenueChartPath = computed(() => {
                             </linearGradient>
                         </defs>
                     </svg>
-                    <!-- Overlay Grid Lines (Optional) -->
-                    <div class="absolute inset-0 pointer-events-none border-b border-white/5"></div>
                 </div>
-            </div>
+            </Card>
 
-            <!-- Audit Activity Card -->
-            <div class="bg-bg-dark/50 backdrop-blur-md p-10 rounded-[40px] shadow-soft-md border border-white/5">
-                <div class="flex items-center justify-between mb-8">
-                    <h3 class="text-lg font-black text-adaptive tracking-tight">Security Intelligence</h3>
-                    <button class="text-xs font-black text-brand-teal uppercase tracking-widest hover:underline decoration-2">Deep Dive</button>
+            <Card class="p-8">
+                <div class="mb-8 flex items-center justify-between">
+                    <h3 class="text-lg font-black tracking-tight text-text-primary">Security intelligence</h3>
+                    <button class="text-xs font-black uppercase tracking-[0.2em] text-teal hover:underline">Deep dive</button>
                 </div>
                 <div class="space-y-3">
-                    <div v-for="activity in recent_activities" :key="activity.id" class="flex items-center justify-between p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition-all border border-transparent hover:border-white/10 group">
+                    <div v-for="activity in recent_activities" :key="activity.id" class="flex items-center justify-between rounded-2xl border border-panel-line bg-panel-2 p-4 transition hover:border-amber/25">
                         <div class="flex items-center gap-4">
-                            <div class="w-10 h-10 rounded-xl flex items-center justify-center transition-colors"
+                            <div class="flex h-10 w-10 items-center justify-center rounded-xl"
                                 :class="{
-                                    'bg-emerald-500/10 text-emerald-500': activity.status === 'success',
-                                    'bg-red-500/10 text-red-500': activity.status !== 'success'
+                                    'bg-teal/10 text-teal': activity.status === 'success',
+                                    'bg-danger/8 text-danger': activity.status !== 'success'
                                 }">
-                                <svg v-if="activity.status === 'success'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <svg v-if="activity.status === 'success'" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <svg v-else class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             </div>
                             <div>
-                                <p class="text-sm font-black text-adaptive leading-tight">{{ activity.product_name }}</p>
-                                <p class="text-[11px] text-text-muted font-medium">Domain: {{ activity.domain }}</p>
+                                <p class="text-sm font-black leading-tight text-text-primary">{{ activity.product_name }}</p>
+                                <p class="text-[11px] font-medium text-text-muted">Domain: {{ activity.domain }}</p>
                             </div>
                         </div>
                         <div class="text-right">
-                             <span class="text-[9px] font-black uppercase tracking-tighter block mb-0.5"
-                                :class="activity.status === 'success' ? 'text-emerald-500' : 'text-red-500'">
+                            <span class="mb-1 block text-[9px] font-black uppercase tracking-[0.2em]" :class="activity.status === 'success' ? 'text-teal' : 'text-danger'">
                                 {{ activity.status }}
                             </span>
                             <span class="text-[9px] text-text-muted">{{ activity.created_at }}</span>
                         </div>
                     </div>
-                    <div v-if="recent_activities.length === 0" class="text-center py-8 text-text-muted text-sm scale-95 opacity-50">
+                    <div v-if="recent_activities.length === 0" class="py-8 text-center text-sm text-text-muted opacity-50">
                         No recent activity detected.
                     </div>
                 </div>
-            </div>
+            </Card>
         </div>
     </AuthenticatedLayout>
 </template>

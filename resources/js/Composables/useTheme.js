@@ -2,10 +2,11 @@ import { ref, onBeforeMount } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 
 export function useTheme() {
-    const currentTheme = ref('dark-modern');
+    const currentTheme = ref('terminal');
     const page = usePage();
 
     const themes = [
+        { id: 'terminal', name: 'Terminal' },
         { id: 'dark-modern', name: 'Dark Modern' },
         { id: 'light-modern', name: 'Light Modern' },
         { id: 'solarized-dark', name: 'Solarized Dark' },
@@ -15,19 +16,12 @@ export function useTheme() {
     const initTheme = () => {
         const userPref = page.props.auth.user?.theme_preference;
         // Default theme from backend settings or fallback
-        const defaultTheme = page.props.settings?.default_theme || 'dark-modern';
+        const defaultTheme = page.props.settings?.default_theme || 'terminal';
 
         if (userPref) {
             currentTheme.value = userPref;
         } else {
-            // Browser detection
-            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                currentTheme.value = 'dark-modern';
-            } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-                currentTheme.value = 'light-modern';
-            } else {
-                currentTheme.value = defaultTheme;
-            }
+            currentTheme.value = defaultTheme;
         }
         
         // Apply immediately

@@ -1,160 +1,108 @@
 <script setup>
-import { computed, ref, onBeforeMount } from 'vue';
+import { computed, onBeforeMount, ref } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { useTheme } from '@/Composables/useTheme';
+import Button from '@/Components/UI/Button.vue';
 
 const isSidebarOpen = ref(true);
+const isProfileDropdownOpen = ref(false);
 const page = usePage();
 const user = computed(() => page.props.auth.user);
-
 const { currentTheme, themes, initTheme, switchTheme } = useTheme();
 
-onBeforeMount(() => {
-    initTheme();
-});
+onBeforeMount(initTheme);
 
-const navItems = computed(() => {
-    const items = [];
-
-    if (user.value.role === 'admin') {
-        items.push({ name: 'Dashboard', href: route('admin.dashboard'), icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' });
-        items.push({ name: 'Analytics', href: route('admin.analytics'), icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' });
-        items.push({ name: 'Orders', href: route('admin.orders'), icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 002-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' });
-        items.push({ name: 'Products', href: route('admin.products'), icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' });
-        items.push({ name: 'Admin Settings', href: route('admin.settings'), icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' });
-        items.push({ name: 'Licenses', href: route('admin.licenses'), icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' });
-    } else {
-        items.push({ name: 'Dashboard', href: route('dashboard'), icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' });
-        items.push({ name: 'Analytics', href: route('analytics'), icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' });
-        items.push({ name: 'Licenses', href: route('licenses'), icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' });
-        items.push({ name: 'Store', href: route('store'), icon: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293a1 1 0 00.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z' });
-        items.push({ name: 'Orders', href: route('orders'), icon: 'M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z' });
-        items.push({ name: 'Account Settings', href: route('profile.edit'), icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' });
-    }
-
-    return items;
-});
-
-const isProfileDropdownOpen = ref(false);
+const navItems = computed(() => user.value.role === 'admin'
+    ? [
+        { name: 'Dashboard', href: route('admin.dashboard'), icon: 'M3 12l2-2 7-7 7 7M5 10v10h4v-6h6v6h4V10' },
+        { name: 'Analytics', href: route('admin.analytics'), icon: 'M4 19v-6h4v6m4 0V5h4v14m4 0V9h-4v10' },
+        { name: 'Orders', href: route('admin.orders'), icon: 'M6 4h12v16H6zM9 8h6m-6 4h6m-6 4h4' },
+        { name: 'Products', href: route('admin.products'), icon: 'm20 7-8-4-8 4 8 4 8-4Zm-16 0v10l8 4 8-4V7M12 11v10' },
+        { name: 'Admin Settings', href: route('admin.settings'), icon: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm0-12v2m0 13v2m8.5-8.5h-2m-13 0h-2m14.5-6-1.4 1.4m-10.2 10.2L4.6 19m14.8 0-1.4-1.4M5.9 5.9 4.6 4.6' },
+        { name: 'Licenses', href: route('admin.licenses'), icon: 'M6 3h8l4 4v14H6zM9 12h6m-6 4h6' },
+    ]
+    : [
+        { name: 'Dashboard', href: route('dashboard'), icon: 'M3 12l2-2 7-7 7 7M5 10v10h4v-6h6v6h4V10' },
+        { name: 'Analytics', href: route('analytics'), icon: 'M4 19v-6h4v6m4 0V5h4v14m4 0V9h-4v10' },
+        { name: 'Licenses', href: route('licenses'), icon: 'M6 3h8l4 4v14H6zM9 12h6m-6 4h6' },
+        { name: 'Store', href: route('store'), icon: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13 5.4 5m1.6 8-2.3 2.3A1 1 0 0 0 5.4 17H17m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm-10 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z' },
+        { name: 'Orders', href: route('orders'), icon: 'M8 7V5a4 4 0 0 1 8 0v2m-11 0h14l1 13H4L5 7Zm0 4h14' },
+        { name: 'Account Settings', href: route('profile.edit'), icon: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm0-12v2m0 13v2m8.5-8.5h-2m-13 0h-2m14.5-6-1.4 1.4m-10.2 10.2L4.6 19m14.8 0-1.4-1.4M5.9 5.9 4.6 4.6' },
+    ]);
 </script>
 
 <template>
     <div class="min-h-screen bg-bg-dark flex font-sans text-text-secondary">
-        <!-- Sidebar -->
-        <aside 
-            class="acrylic border-r border-white/5 transition-all duration-300 ease-in-out sticky top-0 h-screen overflow-y-auto z-20"
-            :class="isSidebarOpen ? 'w-72' : 'w-20'"
-        >
+        <aside class="bg-panel border-r border-panel-line transition-all duration-300 ease-in-out sticky top-0 h-screen overflow-y-auto z-20" :class="isSidebarOpen ? 'w-72' : 'w-20'">
             <div class="p-8 flex items-center gap-4">
-                <div class="w-10 h-10 bg-gradient-to-br from-brand-teal to-brand-blue rounded-2xl shadow-lg shadow-brand-teal/20 shrink-0 flex items-center justify-center">
-                    <svg class="w-6 h-6 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                <div class="w-10 h-10 bg-amber rounded-lg shrink-0 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-[#1A1305]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                 </div>
-                <h1 v-if="isSidebarOpen" class="font-black text-xl text-adaptive tracking-tighter uppercase truncate">CoreVi<span class="text-brand-teal">SYS</span></h1>
+                <h1 v-if="isSidebarOpen" class="font-semibold text-xl text-text-primary tracking-tight uppercase truncate">CoreVi<span class="text-amber">SYS</span></h1>
             </div>
 
-            <nav class="mt-8 px-6 space-y-1">
-                <Link 
-                    v-for="item in navItems" 
-                    :key="item.name"
-                    :href="item.href"
-                    class="flex items-center gap-4 px-4 py-3 rounded-2xl transition-all group"
-                    :class="$page.url === item.href 
-                        ? 'bg-brand-teal/10 text-brand-teal shadow-glow-teal' 
-                        : 'text-text-muted hover:bg-white/5 hover:text-adaptive'"
-                >
-                    <svg class="w-6 h-6 shrink-0 transition-colors" :class="$page.url === item.href ? 'text-brand-teal' : 'text-text-muted group-hover:text-text-secondary'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" :d="item.icon" />
-                    </svg>
-                    <span v-if="isSidebarOpen" class="font-semibold text-sm tracking-tight truncate">
-                        {{ item.name }}
-                    </span>
-                    <div v-if="$page.url === item.href && isSidebarOpen" class="ml-auto w-1.5 h-1.5 rounded-full bg-brand-teal shadow-[0_0_8px_rgba(102,217,201,0.8)]"></div>
+            <nav class="mt-4 px-4 space-y-1">
+                <Link v-for="item in navItems" :key="item.name" :href="item.href" class="flex items-center gap-3 px-3 py-3 rounded-lg border-l-2 transition-colors" :class="$page.url === item.href ? 'bg-panel-2 text-amber border-amber' : 'text-text-secondary border-transparent hover:bg-panel-2 hover:text-amber'">
+                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" :d="item.icon" /></svg>
+                    <span v-if="isSidebarOpen" class="font-medium text-sm truncate">{{ item.name }}</span>
                 </Link>
             </nav>
 
-            <!-- Bottom Profile / Upgrade Banner Placeholder -->
-            <div v-if="isSidebarOpen" class="absolute bottom-8 left-6 right-6 p-6 glass rounded-3xl border border-white/5">
-                <p class="text-[10px] font-black text-brand-blue uppercase tracking-widest mb-2 text-center">Unlimited Access</p>
-                <p class="text-[11px] text-text-muted text-center mb-4 leading-tight italic">Upgrade to Enterprise for dedicated support.</p>
-                <button class="w-full py-2 bg-gradient-to-r from-brand-teal to-brand-blue text-slate-900 text-xs font-black rounded-xl shadow-lg hover:scale-[1.02] active:scale-95 transition-all">Upgrade Now</button>
+            <div v-if="isSidebarOpen" class="absolute bottom-6 left-4 right-4 p-4 bg-panel-2 border border-panel-line rounded-lg">
+                <p class="text-[11px] font-mono text-amber uppercase tracking-wide mb-2">Unlimited Access</p>
+                <p class="text-xs text-text-muted mb-4 leading-relaxed">Upgrade to Enterprise for dedicated support.</p>
+                <Button class="w-full" type="button">Upgrade now</Button>
             </div>
         </aside>
 
-        <!-- Main Content -->
-        <main class="flex-1 relative bg-bg-dark">
-            <!-- Topbar -->
-            <header class="h-20 acrylic flex items-center justify-between px-10 sticky top-0 z-10 border-b border-white/5">
-                <button @click="isSidebarOpen = !isSidebarOpen" class="p-2.5 hover:bg-white/5 rounded-xl text-text-muted transition-colors">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16" />
-                    </svg>
+        <main class="flex-1 min-w-0 relative bg-bg-dark">
+            <header class="h-20 bg-panel border-b border-panel-line flex items-center justify-between px-6 sm:px-10 sticky top-0 z-10">
+                <button @click="isSidebarOpen = !isSidebarOpen" class="p-2 rounded-lg text-text-secondary hover:bg-panel-2 hover:text-amber transition-colors" aria-label="Toggle sidebar">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16" /></svg>
                 </button>
 
-                <div class="flex items-center gap-6">
-                    <!-- Global Search Placeholder -->
-                    <div class="hidden md:flex items-center px-4 py-2 glass rounded-2xl w-64 group focus-within:ring-2 focus-within:ring-brand-teal/20 transition-all">
+                <div class="flex items-center gap-4 sm:gap-6">
+                    <div class="hidden md:flex items-center px-3 py-2 bg-panel-2 border border-panel-line rounded-lg w-64 focus-within:border-amber-dim transition-colors">
                         <svg class="w-4 h-4 text-text-muted mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                        <input type="text" placeholder="Search anything..." class="bg-transparent border-none text-xs text-text-secondary focus:outline-none w-full placeholder:text-text-muted" />
+                        <input type="text" placeholder="Search anything..." class="bg-transparent border-none text-xs text-text-primary focus:outline-none w-full placeholder:text-text-muted" />
                     </div>
 
-                    <div class="flex items-center gap-4 relative">
+                    <div class="flex items-center gap-3 relative">
                         <div class="text-right hidden sm:block">
-                            <p class="text-sm font-bold text-adaptive leading-none mb-1">{{ $page.props.auth.user.name }}</p>
-                            <span class="text-[10px] font-black uppercase tracking-[0.2em] text-brand-teal">{{ $page.props.auth.user.role || 'Member' }}</span>
+                            <p class="text-sm font-medium text-text-primary leading-none mb-1">{{ $page.props.auth.user.name }}</p>
+                            <span class="text-[10px] font-mono uppercase tracking-wide text-amber">{{ $page.props.auth.user.role || 'Member' }}</span>
                         </div>
-                        
+
                         <div class="relative">
-                            <button @click="isProfileDropdownOpen = !isProfileDropdownOpen" class="group flex items-center gap-2">
-                                <div class="w-10 h-10 glass rounded-2xl p-0.5 overflow-hidden transition-all group-hover:border-brand-teal/50">
-                                     <div class="w-full h-full bg-white/5 rounded-[14px]"></div>
+                            <button @click="isProfileDropdownOpen = !isProfileDropdownOpen" class="group flex items-center gap-2" aria-label="Open profile menu">
+                                <div class="w-10 h-10 bg-panel-2 border border-panel-line rounded-lg flex items-center justify-center text-text-muted group-hover:border-amber-dim group-hover:text-amber transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5.121 17.804A9 9 0 1118.88 17.804M15 11a3 3 0 10-6 0 3 3 0 006 0zm2.5 7.5a6.5 6.5 0 00-11 0" /></svg>
                                 </div>
                                 <svg class="w-4 h-4 text-text-muted transition-transform" :class="{ 'rotate-180': isProfileDropdownOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
                             </button>
 
-                            <!-- Dropdown -->
-                            <transition enter-active-class="transition ease-out duration-200" enter-from-class="opacity-0 translate-y-1" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition ease-in duration-150" leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 translate-y-1">
-                                <div v-if="isProfileDropdownOpen" class="absolute right-0 mt-4 w-56 acrylic rounded-3xl shadow-2xl border border-white/5 py-3 z-30">
-                                    <div class="px-5 py-2 mb-2 border-b border-white/5">
-                                        <p class="text-xs text-text-muted font-medium italic">Logged in as</p>
-                                        <p class="text-xs font-bold text-adaptive truncate">{{ $page.props.auth.user.email }}</p>
-                                    </div>
-                                    
-                                    <!-- Theme Selection (Mini) -->
-                                    <div class="px-5 py-2 border-b border-white/5">
-                                        <p class="text-[10px] font-black uppercase tracking-widest text-text-muted mb-2">Theme</p>
-                                        <div class="grid grid-cols-4 gap-2">
-                                            <button v-for="t in themes" :key="t.id"
-                                                @click="switchTheme(t.id)"
-                                                :title="t.name"
-                                                class="w-8 h-8 rounded-full border-2 transition-all flex items-center justify-center"
-                                                :class="currentTheme === t.id ? 'border-brand-teal scale-110 shadow-glow-teal' : 'border-slate-700 hover:border-slate-500'"
-                                                :style="{
-                                                    backgroundColor: t.id === 'light-modern' ? '#f8fafc' : 
-                                                                     t.id === 'solarized-dark' ? '#002b36' : 
-                                                                     t.id === 'tokyo-night' ? '#1a1b26' : '#0f111a'
-                                                }"
-                                            >
-                                                <svg v-if="currentTheme === t.id" class="w-4 h-4 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg>
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <Link :href="route('profile.edit')" class="flex items-center px-5 py-2 text-sm text-text-secondary hover:bg-white/5 hover:text-brand-teal transition-colors font-semibold">
-                                        Account Settings
-                                    </Link>
-                                    <Link :href="route('logout')" method="post" as="button" class="w-full text-left flex items-center px-5 py-2 text-sm text-rose-400 hover:bg-rose-500/10 transition-colors font-semibold">
-                                        Sign Out
-                                    </Link>
+                            <div v-if="isProfileDropdownOpen" class="absolute right-0 mt-3 w-60 bg-panel border border-panel-line rounded-lg py-2 z-30">
+                                <div class="px-4 py-2 mb-2 border-b border-panel-line">
+                                    <p class="text-[11px] font-mono text-text-muted">Logged in as</p>
+                                    <p class="text-xs font-medium text-text-primary truncate">{{ $page.props.auth.user.email }}</p>
                                 </div>
-                            </transition>
+                                <div class="px-4 py-2 border-b border-panel-line">
+                                    <p class="text-[10px] font-mono uppercase tracking-wide text-text-muted mb-2">Theme</p>
+                                    <div class="grid grid-cols-5 gap-2">
+                                        <button v-for="t in themes" :key="t.id" @click="switchTheme(t.id)" :title="t.name" class="w-8 h-8 rounded-lg border flex items-center justify-center transition-colors" :class="currentTheme === t.id ? 'border-amber text-amber' : 'border-panel-line text-text-muted hover:border-amber-dim'" :style="{ backgroundColor: t.id === 'terminal' ? '#100e0c' : t.id === 'light-modern' ? '#f8fafc' : t.id === 'solarized-dark' ? '#002b36' : t.id === 'tokyo-night' ? '#1a1b26' : '#0f172a' }">
+                                            <svg v-if="currentTheme === t.id" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <Link :href="route('profile.edit')" class="flex items-center px-4 py-2 text-sm text-text-secondary hover:bg-panel-2 hover:text-amber transition-colors">Account settings</Link>
+                                <Link :href="route('logout')" method="post" as="button" class="w-full text-left flex items-center px-4 py-2 text-sm text-danger hover:bg-danger/8 transition-colors">Sign out</Link>
+                            </div>
                         </div>
                     </div>
                 </div>
             </header>
 
-            <div class="p-10 max-w-7xl mx-auto">
-                <slot />
-            </div>
+            <div class="p-10 max-w-7xl mx-auto"><slot /></div>
         </main>
     </div>
 </template>

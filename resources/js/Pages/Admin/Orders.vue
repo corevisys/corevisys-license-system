@@ -1,23 +1,32 @@
 <script setup>
+import Badge from '@/Components/UI/Badge.vue';
+import Button from '@/Components/UI/Button.vue';
+import Card from '@/Components/UI/Card.vue';
+import Table from '@/Components/UI/Table.vue';
+import TableCell from '@/Components/UI/TableCell.vue';
+import TableHead from '@/Components/UI/TableHead.vue';
+import TableHeaderCell from '@/Components/UI/TableHeaderCell.vue';
+import TableRow from '@/Components/UI/TableRow.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { computed, ref } from 'vue';
 
 const props = defineProps({
-    orders: Array
+    orders: Array,
 });
 
 const search = ref('');
-const statusFilter = ref('pending'); // 'pending', 'completed', 'all'
+const statusFilter = ref('pending');
 
 const filteredOrders = computed(() => {
-    return props.orders.filter(order => {
-        const matchesStatus = statusFilter.value === 'all' || order.status === statusFilter.value;
-        const matchesSearch = 
+    return props.orders.filter((order) => {
+        const value = String(order.status || '').toLowerCase();
+        const matchesStatus = statusFilter.value === 'all' || value === statusFilter.value;
+        const matchesSearch =
             order.order_number.toLowerCase().includes(search.value.toLowerCase()) ||
             order.user_email.toLowerCase().includes(search.value.toLowerCase()) ||
             (order.transaction_id && order.transaction_id.toLowerCase().includes(search.value.toLowerCase()));
-        
+
         return matchesStatus && matchesSearch;
     });
 });
@@ -29,12 +38,15 @@ const verifyOrder = (id) => {
 };
 
 const getStatusColor = (status) => {
-    switch (status) {
-        case 'pending': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
-        case 'completed': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
-        case 'cancelled': return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
-        default: return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
-    }
+    const value = String(status || '').toLowerCase();
+    const mapping = {
+        pending: 'amber',
+        awaiting_payment: 'amber',
+        completed: 'success',
+        cancelled: 'danger',
+    };
+
+    return mapping[value] ?? 'default';
 };
 </script>
 
@@ -42,109 +54,83 @@ const getStatusColor = (status) => {
     <Head title="Order Management" />
 
     <AuthenticatedLayout>
-        <template #header>
-            <div class="flex items-center justify-between">
-                <h2 class="font-black text-xl text-adaptive uppercase tracking-widest leading-tight">
-                    Order <span class="text-brand-teal">Management</span>
-                </h2>
-                <div class="flex gap-4">
-                    <div class="relative group">
-                        <input 
-                            v-model="search"
-                            type="text" 
-                            placeholder="Search orders..." 
-                            class="pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-adaptive placeholder:text-text-muted focus:ring-1 focus:ring-brand-teal/50 transition-all w-64"
-                        >
-                        <svg class="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                    </div>
-                </div>
+        <div class="mb-12 flex items-center justify-between gap-4">
+            <div>
+                <Badge status="success" class="!rounded-full px-3 py-1.5">Order queue</Badge>
+                <h2 class="mt-4 text-4xl font-black tracking-tight text-text-primary">Order management</h2>
             </div>
-        </template>
-
-        <div class="py-8">
-            <!-- Stats overview could go here -->
-            
-            <!-- Filters -->
-            <div class="flex gap-2 mb-6">
-                <button 
-                    v-for="status in ['pending', 'completed', 'all']" 
-                    :key="status"
-                    @click="statusFilter = status"
-                    class="px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest border transition-all"
-                    :class="statusFilter === status 
-                        ? 'bg-brand-teal text-slate-900 border-brand-teal' 
-                        : 'bg-transparent text-text-muted border-white/10 hover:border-brand-teal'"
+            <div class="relative">
+                <input
+                    v-model="search"
+                    type="text"
+                    placeholder="Search orders..."
+                    class="w-64 rounded-xl border border-panel-line bg-panel-2 py-2 pl-10 pr-4 text-sm text-text-primary placeholder:text-text-muted focus:border-amber focus:outline-none"
                 >
-                    {{ status }}
-                </button>
-            </div>
-
-            <div class="bg-bg-dark/50 backdrop-blur-xl border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left">
-                        <thead>
-                            <tr class="border-b border-white/5 bg-white/5">
-                                <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Order ID</th>
-                                <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">User</th>
-                                <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Amount</th>
-                                <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Method</th>
-                                <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Trx ID</th>
-                                <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted">Status</th>
-                                <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-text-muted text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-white/5">
-                            <tr v-for="order in filteredOrders" :key="order.id" class="group hover:bg-white/[0.02] transition-colors">
-                                <td class="px-6 py-4">
-                                    <span class="font-mono text-xs text-brand-teal">{{ order.order_number }}</span>
-                                    <p class="text-[10px] text-text-muted">{{ order.created_at }}</p>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <p class="text-sm font-bold text-adaptive">{{ order.user_name }}</p>
-                                    <p class="text-xs text-text-muted">{{ order.user_email }}</p>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <span class="text-sm font-bold text-adaptive">{{ order.currency }} {{ order.total_amount }}</span>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <div class="flex items-center gap-2">
-                                        <template v-if="order.payment_method === 'online'">
-                                            <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                            <span class="text-xs font-bold text-indigo-400">Stripe</span>
-                                        </template>
-                                        <template v-else>
-                                            <svg class="w-3.5 h-3.5 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                                            <span class="text-xs font-medium text-text-muted capitalize">Manual</span>
-                                        </template>
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <span class="font-mono text-xs text-text-muted">{{ order.transaction_id }}</span>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <span class="px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border" :class="getStatusColor(order.status)">
-                                        {{ order.status }}
-                                    </span>
-                                </td>
-                                <td class="px-6 py-4 text-right">
-                                    <button 
-                                        v-if="order.status === 'pending'"
-                                        @click="verifyOrder(order.id)"
-                                        class="px-3 py-1 bg-brand-teal/10 text-brand-teal border border-brand-teal/20 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-brand-teal hover:text-slate-900 transition-all"
-                                    >
-                                        Verify
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr v-if="filteredOrders.length === 0">
-                                <td colspan="7" class="px-6 py-12 text-center text-text-muted text-sm italic">
-                                    No orders found.
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                <svg class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </div>
         </div>
+
+        <div class="mb-6 flex flex-wrap gap-2">
+            <Button v-for="status in ['pending', 'awaiting_payment', 'completed', 'cancelled', 'all']" :key="status" type="button" :variant="statusFilter === status ? 'primary' : 'secondary'" @click="statusFilter = status">
+                {{ status === 'all' ? 'All' : status.replace('_', ' ') }}
+            </Button>
+        </div>
+
+        <Card class="overflow-hidden p-0">
+            <div class="overflow-x-auto">
+                <Table>
+                    <TableHead>
+                        <TableRow>
+                            <TableHeaderCell>Order ID</TableHeaderCell>
+                            <TableHeaderCell>User</TableHeaderCell>
+                            <TableHeaderCell>Amount</TableHeaderCell>
+                            <TableHeaderCell>Method</TableHeaderCell>
+                            <TableHeaderCell>Trx ID</TableHeaderCell>
+                            <TableHeaderCell>Status</TableHeaderCell>
+                            <TableHeaderCell class="text-right">Actions</TableHeaderCell>
+                        </TableRow>
+                    </TableHead>
+                    <tbody>
+                        <TableRow v-for="order in filteredOrders" :key="order.id">
+                            <TableCell>
+                                <span class="font-mono text-xs text-teal">{{ order.order_number }}</span>
+                                <div class="text-[10px] text-text-muted">{{ order.created_at }}</div>
+                            </TableCell>
+                            <TableCell>
+                                <div class="font-bold text-text-primary">{{ order.user_name }}</div>
+                                <div class="text-xs text-text-muted">{{ order.user_email }}</div>
+                            </TableCell>
+                            <TableCell>
+                                <span class="font-bold text-text-primary">{{ order.currency }} {{ order.total_amount }}</span>
+                            </TableCell>
+                            <TableCell>
+                                <div class="flex items-center gap-2">
+                                    <template v-if="order.payment_method === 'online'">
+                                        <span class="h-2.5 w-2.5 rounded-full bg-teal" />
+                                        <span class="text-xs font-bold uppercase tracking-[0.2em] text-text-secondary">Stripe</span>
+                                    </template>
+                                    <template v-else>
+                                        <span class="h-2.5 w-2.5 rounded-full bg-panel-line" />
+                                        <span class="text-xs font-medium uppercase tracking-[0.2em] text-text-muted">Manual</span>
+                                    </template>
+                                </div>
+                            </TableCell>
+                            <TableCell>
+                                <span class="font-mono text-xs text-text-muted">{{ order.transaction_id }}</span>
+                            </TableCell>
+                            <TableCell>
+                                <Badge :status="getStatusColor(order.status)">{{ order.status }}</Badge>
+                            </TableCell>
+                            <TableCell class="text-right">
+                                <Button v-if="order.status === 'pending'" type="button" variant="primary" @click="verifyOrder(order.id)">Verify</Button>
+                            </TableCell>
+                        </TableRow>
+                        <TableRow v-if="filteredOrders.length === 0">
+                            <TableCell colspan="7" class="py-12 text-center text-sm text-text-muted">No orders found.</TableCell>
+                        </TableRow>
+                    </tbody>
+                </Table>
+            </div>
+        </Card>
     </AuthenticatedLayout>
 </template>

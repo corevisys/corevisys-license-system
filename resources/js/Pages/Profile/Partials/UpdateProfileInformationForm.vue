@@ -1,8 +1,9 @@
 <script setup>
+import Alert from '@/Components/UI/Alert.vue';
+import Button from '@/Components/UI/Button.vue';
+import InputLabel from '@/Components/UI/InputLabel.vue';
+import TextInput from '@/Components/UI/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
 import { Link, useForm, usePage } from '@inertiajs/vue3';
 
 defineProps({
@@ -25,86 +26,41 @@ const form = useForm({
 <template>
     <section>
         <header>
-            <h2 class="text-lg font-medium text-adaptive">
-                Profile Information
-            </h2>
-
-            <p class="mt-1 text-sm text-text-muted">
-                Update your account's profile information and email address.
-            </p>
+            <h2 class="text-xl font-black text-text-primary">Profile information</h2>
+            <p class="mt-1 text-sm text-text-muted">Update your account profile information and email address.</p>
         </header>
 
-        <form
-            @submit.prevent="form.patch(route('profile.update'))"
-            class="mt-6 space-y-6"
-        >
+        <form @submit.prevent="form.patch(route('profile.update'))" class="mt-6 space-y-6">
             <div>
-                <InputLabel for="name" value="Name" />
-
-                <TextInput
-                    id="name"
-                    type="text"
-                    class="mt-1 block w-full"
-                    v-model="form.name"
-                    required
-                    autofocus
-                    autocomplete="name"
-                />
-
+                <InputLabel for="name" class="!mb-2">Name</InputLabel>
+                <TextInput id="name" type="text" class="mt-1 block w-full" v-model="form.name" required autofocus autocomplete="name" />
                 <InputError class="mt-2" :message="form.errors.name" />
             </div>
 
             <div>
-                <InputLabel for="email" value="Email" />
-
-                <TextInput
-                    id="email"
-                    type="email"
-                    class="mt-1 block w-full"
-                    v-model="form.email"
-                    required
-                    autocomplete="username"
-                />
-
+                <InputLabel for="email" class="!mb-2">Email</InputLabel>
+                <TextInput id="email" type="email" class="mt-1 block w-full" v-model="form.email" required autocomplete="username" />
                 <InputError class="mt-2" :message="form.errors.email" />
             </div>
 
             <div v-if="mustVerifyEmail && user.email_verified_at === null">
-                <p class="mt-2 text-sm text-adaptive">
+                <p class="mt-2 text-sm text-text-muted">
                     Your email address is unverified.
-                    <Link
-                        :href="route('verification.send')"
-                        method="post"
-                        as="button"
-                        class="rounded-md text-sm text-text-muted underline hover:text-adaptive focus:outline-none focus:ring-2 focus:ring-brand-teal focus:ring-offset-2 dark:focus:ring-offset-gray-800"
-                    >
+                    <Link :href="route('verification.send')" method="post" as="button" class="rounded-md text-sm text-amber underline-offset-4 hover:underline">
                         Click here to re-send the verification email.
                     </Link>
                 </p>
 
-                <div
-                    v-show="status === 'verification-link-sent'"
-                    class="mt-2 text-sm font-medium text-green-600 dark:text-green-400"
-                >
+                <Alert v-show="status === 'verification-link-sent'" variant="success" class="mt-3">
                     A new verification link has been sent to your email address.
-                </div>
+                </Alert>
             </div>
 
             <div class="flex items-center gap-4">
-                <PrimaryButton :disabled="form.processing">Save</PrimaryButton>
+                <Button type="submit" variant="primary" :disabled="form.processing">Save</Button>
 
-                <Transition
-                    enter-active-class="transition ease-in-out"
-                    enter-from-class="opacity-0"
-                    leave-active-class="transition ease-in-out"
-                    leave-to-class="opacity-0"
-                >
-                    <p
-                        v-if="form.recentlySuccessful"
-                        class="text-sm text-text-muted"
-                    >
-                        Saved.
-                    </p>
+                <Transition enter-active-class="transition ease-in-out" enter-from-class="opacity-0" leave-active-class="transition ease-in-out" leave-to-class="opacity-0">
+                    <p v-if="form.recentlySuccessful" class="text-sm text-text-muted">Saved.</p>
                 </Transition>
             </div>
         </form>

@@ -12,6 +12,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap"
         rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
 
     <!-- Scripts -->
     @routes
@@ -19,7 +21,7 @@
     @inertiaHead
 </head>
 
-<body class="font-sans antialiased text-slate-900 bg-white dark:bg-[#0f111a] selection:bg-[#66d9c9] selection:text-slate-900">
+<body class="font-sans antialiased text-text-primary bg-bg-dark selection:bg-[#66d9c9] selection:text-slate-900">
     @inertia
 </body>
 

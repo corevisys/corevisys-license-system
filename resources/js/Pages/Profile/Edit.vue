@@ -1,4 +1,5 @@
 <script setup>
+import Card from '@/Components/UI/Card.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import DeleteUserForm from './Partials/DeleteUserForm.vue';
 import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
@@ -20,36 +21,22 @@ defineProps({
 
     <AuthenticatedLayout>
         <template #header>
-            <h2
-                class="text-xl font-semibold leading-tight text-adaptive"
-            >
-                Profile
-            </h2>
+            <h2 class="text-2xl font-black tracking-tight text-text-primary">Profile</h2>
         </template>
 
         <div class="py-12">
             <div class="mx-auto max-w-7xl space-y-6 sm:px-6 lg:px-8">
-                <div
-                    class="bg-bg-dark/50 backdrop-blur-md border border-white/5 p-4 shadow sm:rounded-lg sm:p-8"
-                >
-                    <UpdateProfileInformationForm
-                        :must-verify-email="mustVerifyEmail"
-                        :status="status"
-                        class="max-w-xl"
-                    />
-                </div>
+                <Card>
+                    <UpdateProfileInformationForm :must-verify-email="mustVerifyEmail" :status="status" class="max-w-xl" />
+                </Card>
 
-                <div
-                    class="bg-bg-dark/50 backdrop-blur-md border border-white/5 p-4 shadow sm:rounded-lg sm:p-8"
-                >
+                <Card>
                     <UpdatePasswordForm class="max-w-xl" />
-                </div>
+                </Card>
 
-                <div
-                    class="bg-white p-4 shadow sm:rounded-lg sm:p-8 dark:bg-gray-800"
-                >
+                <Card>
                     <DeleteUserForm class="max-w-xl" />
-                </div>
+                </Card>
             </div>
         </div>
     </AuthenticatedLayout>

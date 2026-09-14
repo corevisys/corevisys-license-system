@@ -26,11 +26,9 @@ watch(
         if (props.show) {
             document.body.style.overflow = 'hidden';
             showSlot.value = true;
-
             dialog.value?.showModal();
         } else {
             document.body.style.overflow = '';
-
             setTimeout(() => {
                 dialog.value?.close();
                 showSlot.value = false;
@@ -48,7 +46,6 @@ const close = () => {
 const closeOnEscape = (e) => {
     if (e.key === 'Escape') {
         e.preventDefault();
-
         if (props.show) {
             close();
         }
@@ -59,7 +56,6 @@ onMounted(() => document.addEventListener('keydown', closeOnEscape));
 
 onUnmounted(() => {
     document.removeEventListener('keydown', closeOnEscape);
-
     document.body.style.overflow = '';
 });
 
@@ -75,14 +71,8 @@ const maxWidthClass = computed(() => {
 </script>
 
 <template>
-    <dialog
-        class="z-50 m-0 min-h-full min-w-full overflow-y-auto bg-transparent backdrop:bg-transparent"
-        ref="dialog"
-    >
-        <div
-            class="fixed inset-0 z-50 overflow-y-auto px-4 py-6 sm:px-0"
-            scroll-region
-        >
+    <dialog class="z-50 m-0 min-h-full min-w-full overflow-y-auto bg-transparent backdrop:bg-transparent" ref="dialog">
+        <div class="fixed inset-0 z-50 overflow-y-auto px-4 py-6 sm:px-0" scroll-region>
             <Transition
                 enter-active-class="ease-out duration-300"
                 enter-from-class="opacity-0"
@@ -91,14 +81,8 @@ const maxWidthClass = computed(() => {
                 leave-from-class="opacity-100"
                 leave-to-class="opacity-0"
             >
-                <div
-                    v-show="show"
-                    class="fixed inset-0 transform transition-all"
-                    @click="close"
-                >
-                    <div
-                        class="absolute inset-0 bg-gray-500 opacity-75 dark:bg-gray-900"
-                    />
+                <div v-show="show" class="fixed inset-0 transform transition-all" @click="close">
+                    <div class="absolute inset-0 bg-black/60" />
                 </div>
             </Transition>
 
@@ -112,7 +96,7 @@ const maxWidthClass = computed(() => {
             >
                 <div
                     v-show="show"
-                    class="mb-6 transform overflow-hidden rounded-lg bg-white shadow-xl transition-all sm:mx-auto sm:w-full dark:bg-gray-800"
+                    class="mb-6 transform overflow-hidden rounded-[18px] border border-panel-line bg-panel-2 shadow-soft-md transition-all sm:mx-auto sm:w-full"
                     :class="maxWidthClass"
                 >
                     <slot v-if="showSlot" />

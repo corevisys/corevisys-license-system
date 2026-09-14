@@ -35,7 +35,7 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
             ],
             'settings' => [
-                'default_theme' => \App\Models\SystemSetting::where('key', 'default_theme')->value('value') ?? 'dark-modern',
+                'default_theme' => \App\Models\SystemSetting::where('key', 'default_theme')->value('value') ?? 'terminal',
             ],
         ];
     }
