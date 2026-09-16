@@ -1,10 +1,16 @@
 # CoreVisys Project Knowledge Base
 
-**Document status:** Verified baseline after Phase 1-6 remediation
+**Document status:** Refreshed against the current repository state
 **Last audited:** 2026-09-14
 **Scope:** Laravel application, license platform, customer dashboard, admin workflows, payments, jobs, operations, tests, and documentation
 
 ## 1. Executive Summary
+
+### 1.1 Current repository snapshot
+
+The codebase is currently in a verified, green state for the application logic and test suite. The repository contains the full remediation set for the earlier operational and policy gaps, and the remaining open item is limited to live external sandbox validation for Stripe and bKash rather than a code-level defect.
+
+The current production posture is: code-complete, locally validated, and ready for external-provider sandbox verification before final production sign-off.
 
 CoreVisys is a Laravel 12 application that sells and manages software licenses. It provides a Vue/Inertia web dashboard, a public versioned license API, authenticated checkout, Stripe and bKash payment flows, manual/offline receipt approval, license activation and binding, subscription and trial concepts, admin controls, audit logging, background jobs, and deployment operations.
 

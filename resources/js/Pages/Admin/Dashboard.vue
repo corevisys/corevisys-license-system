@@ -135,8 +135,8 @@ const revenueChartPath = computed(() => {
                         <path :d="revenueChartPath" fill="url(#brand-grad)" class="transition-all duration-1000 ease-in-out" />
                         <defs>
                             <linearGradient id="brand-grad" x1="0" x2="0" y1="0" y2="1">
-                                <stop offset="0%" stop-color="#4F46E5" stop-opacity="0.6" />
-                                <stop offset="100%" stop-color="#4F46E5" stop-opacity="0" />
+                                <stop offset="0%" stop-color="var(--amber)" stop-opacity="0.6" />
+                                <stop offset="100%" stop-color="var(--amber)" stop-opacity="0" />
                             </linearGradient>
                         </defs>
                     </svg>

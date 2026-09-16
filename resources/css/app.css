@@ -15,6 +15,10 @@
     --color-amber-hover: var(--amber-hover);
     --color-amber-dim: var(--amber-dim);
     --color-teal: var(--teal);
+    --color-provider-stripe: var(--provider-stripe);
+    --color-provider-bkash: var(--provider-bkash);
+    --color-provider-rocket: var(--provider-rocket);
+    --color-provider-offline: var(--provider-offline);
     --color-panel: var(--panel);
     --color-panel-2: var(--panel-2);
     --color-panel-line: var(--panel-line);
@@ -123,6 +127,64 @@
         --panel-line: rgba(255, 255, 255, 0.08);
     }
 
+    /* THEME: Solarized Dark */
+    [data-theme="solarized-dark"] {
+        --color-brand-primary: #B58900;
+        --color-brand-secondary: #073642;
+        --color-brand-accent: #2AA198;
+
+        --bg-primary: #002B36;
+        --bg-acrylic: rgba(0, 43, 54, 0.85);
+        --glass-bg: #073642;
+        --glass-border: #586E75;
+
+        --text-primary: #FDF6E3;
+        --text-secondary: #93A1A1;
+        --text-muted: #657B83;
+        --text-adaptive: #FDF6E3;
+        --danger: #DC322F;
+        --amber: #B58900;
+        --amber-hover: #CB4B16;
+        --amber-dim: #856F00;
+        --teal: #2AA198;
+        --provider-stripe: #268BD2;
+        --provider-bkash: #D33682;
+        --provider-rocket: #6C71C4;
+        --provider-offline: #657B83;
+        --panel: #073642;
+        --panel-2: #0B3F4B;
+        --panel-line: rgba(147, 161, 161, 0.28);
+    }
+
+    /* THEME: Tokyo Night */
+    [data-theme="tokyo-night"] {
+        --color-brand-primary: #7AA2F7;
+        --color-brand-secondary: #1F2335;
+        --color-brand-accent: #7DCFFF;
+
+        --bg-primary: #1A1B26;
+        --bg-acrylic: rgba(26, 27, 38, 0.85);
+        --glass-bg: #1F2335;
+        --glass-border: #3B4261;
+
+        --text-primary: #C0CAF5;
+        --text-secondary: #A9B1D6;
+        --text-muted: #565F89;
+        --text-adaptive: #C0CAF5;
+        --danger: #F7768E;
+        --amber: #7AA2F7;
+        --amber-hover: #89B4FA;
+        --amber-dim: #3D59A1;
+        --teal: #7DCFFF;
+        --provider-stripe: #7AA2F7;
+        --provider-bkash: #BB9AF7;
+        --provider-rocket: #9D7CD8;
+        --provider-offline: #565F89;
+        --panel: #24283B;
+        --panel-2: #1F2335;
+        --panel-line: #3B4261;
+    }
+
     /* THEME: Terminal */
     [data-theme="terminal"] {
         --font-sans: "Space Grotesk", system-ui, sans-serif;
@@ -146,6 +208,10 @@
         --amber-hover: #F0AE4F;
         --amber-dim: #8C6A2E;
         --teal: #4FD6C0;
+        --provider-stripe: #8E9BFF;
+        --provider-bkash: #E58AA8;
+        --provider-rocket: #B58CDA;
+        --provider-offline: #93897A;
         --panel: #17140F;
         --panel-2: #1B1712;
         --panel-line: #2A2620;

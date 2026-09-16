@@ -46,8 +46,8 @@ const gateways = computed(() => {
             gateway: 'stripe',
             label: 'Stripe',
             desc: 'Pay with credit / debit card',
-            classes: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-400',
-            dot: 'bg-indigo-500',
+            classes: 'border-provider-stripe/30 bg-provider-stripe/10 text-provider-stripe',
+            dot: 'bg-provider-stripe',
         });
     }
 
@@ -58,8 +58,8 @@ const gateways = computed(() => {
             gateway: 'bkash',
             label: 'bKash',
             desc: 'Pay via bKash mobile wallet',
-            classes: 'border-pink-500/30 bg-pink-500/10 text-pink-400',
-            dot: 'bg-pink-500',
+            classes: 'border-provider-bkash/30 bg-provider-bkash/10 text-provider-bkash',
+            dot: 'bg-provider-bkash',
         });
     }
 
@@ -69,8 +69,8 @@ const gateways = computed(() => {
         gateway: 'manual',
         label: isFree.value ? 'Free License' : 'Offline',
         desc: isFree.value ? 'No payment required' : 'Bank transfer / manual — verified by admin',
-        classes: 'border-white/10 bg-white/5 text-text-muted',
-        dot: 'bg-text-faint',
+        classes: 'border-panel-line bg-panel-2 text-text-muted',
+        dot: 'bg-provider-offline',
     });
 
     return list;
@@ -184,10 +184,10 @@ const proceedToPayment = () => {
                         class="flex w-full items-center justify-between rounded-[20px] border p-5 text-left transition-all"
                         :class="selectedGateway === gateway.id
                             ? 'border-amber bg-panel-2 ring-1 ring-amber/30'
-                            : 'border-panel-line bg-panel-2 text-text-muted hover:border-amber/50 hover:bg-panel-1'"
+                            : 'border-panel-line bg-panel-2 text-text-muted hover:border-amber/50 hover:bg-panel'"
                     >
                         <div class="flex items-center gap-4">
-                            <span class="h-3 w-3 rounded-full" :class="selectedGateway === gateway.id ? gateway.dot : 'bg-text-faint'" />
+                            <span class="h-3 w-3 rounded-full" :class="selectedGateway === gateway.id ? gateway.dot : 'bg-text-muted'" />
                             <div>
                                 <div class="text-sm font-black text-text-primary">{{ gateway.label }}</div>
                                 <div class="mt-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">{{ gateway.desc }}</div>

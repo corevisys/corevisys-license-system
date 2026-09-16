@@ -17,6 +17,12 @@ createInertiaApp({
             import.meta.glob('./Pages/**/*.vue'),
         ),
     setup({ el, App, props, plugin }) {
+        const initialPageProps = props.initialPage?.props ?? {};
+        const userTheme = initialPageProps.auth?.user?.theme_preference;
+        const defaultTheme = initialPageProps.settings?.default_theme || 'terminal';
+
+        document.documentElement.setAttribute('data-theme', userTheme || defaultTheme);
+
         return createApp({ render: () => h(App, props) })
             .use(plugin)
             .use(ZiggyVue)

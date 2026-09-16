@@ -1,46 +1,46 @@
 <template>
   <Head title="CoreVisys — Enterprise Software Agency" />
-  
-  <div class="min-h-screen bg-[#F8FAFC] selection:bg-blue-200 selection:text-blue-900 overflow-x-hidden font-inter">
+
+  <div class="min-h-screen bg-panel-2 selection:bg-amber/20 selection:text-text-primary overflow-x-hidden font-inter">
     <!-- Navbar -->
     <nav :class="['fixed top-0 w-full z-50 transition-all duration-300', scrolled ? 'glass-nav py-3 shadow-sm' : 'bg-transparent py-5']">
       <div class="max-w-7xl mx-auto px-6 flex justify-between items-center">
         <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-            <CodeIcon class="text-white w-5 h-5" />
+          <div class="w-8 h-8 rounded-lg bg-amber flex items-center justify-center">
+            <CodeIcon class="text-text-primary w-5 h-5" />
           </div>
-          <span :class="['font-sora font-bold text-xl tracking-tight transition-colors duration-300', scrolled ? 'text-slate-900' : 'text-white']">CoreVisys</span>
+          <span :class="['font-sora font-bold text-xl tracking-tight transition-colors duration-300', scrolled ? 'text-text-primary' : 'text-text-primary']">CoreVisys</span>
         </div>
 
-        <div :class="['hidden md:flex items-center space-x-8 text-sm font-medium transition-colors duration-300', scrolled ? 'text-slate-600' : 'text-white/80']">
-          <a href="#" :class="['transition-colors', scrolled ? 'hover:text-blue-600' : 'hover:text-white']">Home</a>
-          <a href="#services" :class="['transition-colors', scrolled ? 'hover:text-blue-600' : 'hover:text-white']">Services</a>
-          <a href="#portfolio" :class="['transition-colors', scrolled ? 'hover:text-blue-600' : 'hover:text-white']">Portfolio</a>
-          <Link :href="route('company')" :class="['transition-colors', scrolled ? 'hover:text-blue-600' : 'hover:text-white']">Company</Link>
-          <Link :href="route('insights')" :class="['transition-colors', scrolled ? 'hover:text-blue-600' : 'hover:text-white']">Insights</Link>
+        <div :class="['hidden md:flex items-center space-x-8 text-sm font-medium transition-colors duration-300', scrolled ? 'text-text-secondary' : 'text-text-secondary']">
+          <a href="#" :class="['transition-colors', scrolled ? 'hover:text-amber' : 'hover:text-text-primary']">Home</a>
+          <a href="#services" :class="['transition-colors', scrolled ? 'hover:text-amber' : 'hover:text-text-primary']">Services</a>
+          <a href="#portfolio" :class="['transition-colors', scrolled ? 'hover:text-amber' : 'hover:text-text-primary']">Portfolio</a>
+          <Link :href="route('company')" :class="['transition-colors', scrolled ? 'hover:text-amber' : 'hover:text-text-primary']">Company</Link>
+          <Link :href="route('insights')" :class="['transition-colors', scrolled ? 'hover:text-amber' : 'hover:text-text-primary']">Insights</Link>
         </div>
 
         <div class="hidden md:flex items-center space-x-4">
-          <Link :href="route('login')" :class="['text-sm font-medium transition-colors duration-300', scrolled ? 'text-slate-600 hover:text-slate-900' : 'text-white/80 hover:text-white']">Sign In</Link>
-          <Link :href="route('contact')" :class="['px-5 py-2.5 rounded-full text-sm font-medium transition-all shadow-md transform hover:-translate-y-0.5', scrolled ? 'bg-slate-900 hover:bg-blue-600 text-white hover:shadow-blue-500/20' : 'bg-white hover:bg-blue-50 text-slate-900 hover:shadow-white/10']">
+          <Link :href="route('login')" :class="['text-sm font-medium transition-colors duration-300', scrolled ? 'text-text-secondary hover:text-text-primary' : 'text-text-secondary hover:text-text-primary']">Sign In</Link>
+          <Link :href="route('contact')" :class="['px-5 py-2.5 rounded-full text-sm font-medium transition-all shadow-md transform hover:-translate-y-0.5', scrolled ? 'bg-bg-dark hover:bg-amber text-text-primary hover:shadow-amber/20' : 'bg-panel hover:bg-amber/10 text-text-primary hover:shadow-panel-line']">
             Book Consultation
           </Link>
         </div>
 
-        <button :class="['md:hidden transition-colors duration-300', scrolled ? 'text-slate-900' : 'text-white']" @click="isOpen = !isOpen">
+        <button :class="['md:hidden transition-colors duration-300', scrolled ? 'text-text-primary' : 'text-text-primary']" @click="isOpen = !isOpen">
           <XIcon v-if="isOpen" />
           <MenuIcon v-else />
         </button>
       </div>
 
       <!-- Mobile Menu -->
-      <div v-if="isOpen" class="absolute top-full left-0 w-full bg-white border-b border-slate-200 shadow-xl py-4 px-6 flex flex-col space-y-4 md:hidden">
-        <a href="#" class="text-slate-600 font-medium">Home</a>
-        <a href="#services" class="text-slate-600 font-medium">Services</a>
-        <a href="#portfolio" class="text-slate-600 font-medium">Portfolio</a>
-        <Link :href="route('company')" class="text-slate-600 font-medium">Company</Link>
-        <Link :href="route('insights')" class="text-slate-600 font-medium">Insights</Link>
-        <Link :href="route('contact')" class="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium text-center w-full mt-2">
+      <div v-if="isOpen" class="absolute top-full left-0 w-full bg-panel border-b border-panel-line shadow-xl py-4 px-6 flex flex-col space-y-4 md:hidden">
+        <a href="#" class="text-text-secondary font-medium">Home</a>
+        <a href="#services" class="text-text-secondary font-medium">Services</a>
+        <a href="#portfolio" class="text-text-secondary font-medium">Portfolio</a>
+        <Link :href="route('company')" class="text-text-secondary font-medium">Company</Link>
+        <Link :href="route('insights')" class="text-text-secondary font-medium">Insights</Link>
+        <Link :href="route('contact')" class="bg-amber text-text-primary px-5 py-2.5 rounded-lg text-sm font-medium text-center w-full mt-2">
           Book Consultation
         </Link>
       </div>
@@ -48,58 +48,58 @@
 
     <main>
       <!-- Hero -->
-      <section class="relative pt-32 pb-20 md:pt-48 md:pb-32 overflow-hidden bg-slate-950">
+      <section class="relative pt-32 pb-20 md:pt-48 md:pb-32 overflow-hidden bg-bg-dark">
         <!-- Developer GIF Background -->
         <div class="absolute inset-0 z-0">
           <img src="https://media.giphy.com/media/L1R1tvI9svkIWwpVYr/giphy.gif" alt="Developer Background" class="w-full h-full object-cover opacity-95 mix-blend-luminosity grayscale" />
-          <div class="absolute inset-0 bg-gradient-to-b from-slate-950/40 via-slate-950/80 to-[#F8FAFC] z-10"></div>
+          <div class="absolute inset-0 bg-gradient-to-b from-bg-dark/40 via-bg-dark/80 to-panel-2 z-10"></div>
         </div>
-        
+
         <div class="absolute inset-0 grid-bg opacity-20 z-0"></div>
         <div class="absolute top-0 left-0 w-full h-full hero-gradient pointer-events-none z-0"></div>
-        
+
         <div class="max-w-7xl mx-auto px-6 relative z-20 text-center">
           <Reveal :delay="0">
-            <div class="inline-flex items-center px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-semibold mb-6 tracking-wide uppercase">
-              <span class="w-2 h-2 rounded-full bg-blue-500 mr-2 animate-pulse"></span>
+            <div class="inline-flex items-center px-3 py-1 rounded-full bg-amber/10 border border-amber/20 text-amber text-sm font-semibold mb-6 tracking-wide uppercase">
+              <span class="w-2 h-2 rounded-full bg-amber/100 mr-2 animate-pulse"></span>
               Top Rated Software Agency
             </div>
           </Reveal>
-          
+
           <Reveal :delay="100">
-            <h1 class="text-3xl md:text-4xl font-sora font-extrabold tracking-tight mb-6 leading-tight max-w-4xl mx-auto text-white">
+            <h1 class="text-3xl md:text-4xl font-sora font-extrabold tracking-tight mb-6 leading-tight max-w-4xl mx-auto text-text-primary">
               Building Scalable Digital Products for <br /><span class="gradient-text">Global Businesses</span>
             </h1>
           </Reveal>
-          
+
           <Reveal :delay="200">
-            <p class="text-lg md:text-xl text-slate-300 mb-10 max-w-2xl mx-auto leading-relaxed">
+            <p class="text-lg md:text-xl text-text-secondary mb-10 max-w-2xl mx-auto leading-relaxed">
               We engineer enterprise-grade software, intuitive mobile apps, and robust cloud solutions that empower ambitious companies to scale faster and innovate smarter.
             </p>
           </Reveal>
-          
+
           <Reveal :delay="300">
             <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link :href="route('contact')" class="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-medium text-base transition-all shadow-lg shadow-blue-600/20 transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
+              <Link :href="route('contact')" class="w-full sm:w-auto px-6 py-3 bg-amber hover:bg-amber-hover text-text-primary rounded-full font-medium text-base transition-all shadow-lg shadow-amber/20 transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
                 Start Your Project <ArrowRightIcon class="w-4 h-4" />
               </Link>
-              <Link :href="route('case-study')" class="w-full sm:w-auto px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-full font-medium text-base transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2 backdrop-blur-sm">
+              <Link :href="route('case-study')" class="w-full sm:w-auto px-6 py-3 bg-panel-2/60 hover:bg-panel-2 border border-panel-line text-text-primary rounded-full font-medium text-base transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2 ">
                 View Case Studies
               </Link>
             </div>
           </Reveal>
 
           <Reveal :delay="400">
-            <div class="mt-16 text-sm font-medium text-slate-400 uppercase tracking-widest mb-6">
+            <div class="mt-16 text-sm font-medium text-text-secondary uppercase tracking-widest mb-6">
               Trusted by innovative teams worldwide
             </div>
-            
+
             <div class="w-full max-w-5xl mx-auto overflow-hidden relative glass-card-dark py-6 rounded-2xl">
-              <div class="absolute left-0 top-0 w-16 h-full bg-gradient-to-r from-slate-950/80 to-transparent z-10"></div>
-              <div class="absolute right-0 top-0 w-16 h-full bg-gradient-to-l from-slate-950/80 to-transparent z-10"></div>
+              <div class="absolute left-0 top-0 w-16 h-full bg-gradient-to-r from-bg-dark/80 to-transparent z-10"></div>
+              <div class="absolute right-0 top-0 w-16 h-full bg-gradient-to-l from-bg-dark/80 to-transparent z-10"></div>
               <div class="flex w-[200%] animate-marquee">
                 <div v-for="set in 2" :key="set" class="flex justify-around w-full items-center">
-                  <span v-for="(logo, i) in ['Acme Corp', 'GlobalTech', 'CoreVisys', 'Stark Ind.', 'Wayne Ent.', 'CyberDyne']" :key="`${set}-${i}`" class="text-xl font-sora font-bold text-slate-400 opacity-60">
+                  <span v-for="(logo, i) in ['Acme Corp', 'GlobalTech', 'CoreVisys', 'Stark Ind.', 'Wayne Ent.', 'CyberDyne']" :key="`${set}-${i}`" class="text-xl font-sora font-bold text-text-secondary opacity-60">
                     {{ logo }}
                   </span>
                 </div>
@@ -110,29 +110,29 @@
       </section>
 
       <!-- Services Section -->
-      <section id="services" class="py-24 bg-white relative">
+      <section id="services" class="py-24 bg-panel relative">
         <div class="max-w-7xl mx-auto px-6 relative z-10">
           <div class="text-center max-w-2xl mx-auto mb-16">
             <Reveal>
-              <div class="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-sm font-semibold mb-6 tracking-wide uppercase">
-                <span class="w-2 h-2 rounded-full bg-blue-600 mr-2 animate-pulse"></span>
+              <div class="inline-flex items-center px-3 py-1 rounded-full bg-amber/10 border border-amber/20 text-amber text-sm font-semibold mb-6 tracking-wide uppercase">
+                <span class="w-2 h-2 rounded-full bg-amber mr-2 animate-pulse"></span>
                 Our Expertise
               </div>
-              <h2 class="text-3xl md:text-5xl font-sora font-bold mb-6 text-slate-900">End-to-End Development Solutions</h2>
-              <p class="text-slate-600 text-lg">We transform complex ideas into elegant, highly functional digital solutions tailored to your specific industry needs.</p>
+              <h2 class="text-3xl md:text-5xl font-sora font-bold mb-6 text-text-primary">End-to-End Development Solutions</h2>
+              <p class="text-text-secondary text-lg">We transform complex ideas into elegant, highly functional digital solutions tailored to your specific industry needs.</p>
             </Reveal>
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <Reveal v-for="(service, index) in SERVICES" :key="index" :delay="index * 100">
-              <component :is="service.link ? Link : 'div'" :href="service.link" class="p-8 rounded-3xl bg-[#F8FAFC] border border-slate-100 card-hover-effect group relative overflow-hidden h-full block">
-                <div class="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
-                <div class="w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center text-blue-600 mb-6 relative z-10 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300">
+              <component :is="service.link ? Link : 'div'" :href="service.link" class="p-8 rounded-3xl bg-panel-2 border border-panel-line card-hover-effect group relative overflow-hidden h-full block">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-amber/10 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110"></div>
+                <div class="w-14 h-14 rounded-2xl bg-panel shadow-sm flex items-center justify-center text-amber mb-6 relative z-10 group-hover:bg-amber group-hover:text-text-primary transition-colors duration-300">
                   <component :is="service.icon" class="w-6 h-6" />
                 </div>
-                <h3 class="text-xl font-sora font-bold mb-3 relative z-10 text-slate-900">{{ service.title }}</h3>
-                <p class="text-slate-600 leading-relaxed relative z-10">{{ service.desc }}</p>
-                <div class="mt-6 flex items-center text-blue-600 font-medium text-sm opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-[-10px] group-hover:translate-x-0 duration-300">
+                <h3 class="text-xl font-sora font-bold mb-3 relative z-10 text-text-primary">{{ service.title }}</h3>
+                <p class="text-text-secondary leading-relaxed relative z-10">{{ service.desc }}</p>
+                <div class="mt-6 flex items-center text-amber font-medium text-sm opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-[-10px] group-hover:translate-x-0 duration-300">
                   Learn more <ChevronRightIcon class="w-4 h-4 ml-1" />
                 </div>
               </component>
@@ -142,16 +142,16 @@
       </section>
 
       <!-- Stats Section -->
-      <section class="py-20 bg-slate-900 text-white relative overflow-hidden">
+      <section class="py-20 bg-bg-dark text-text-primary relative overflow-hidden">
         <div class="absolute inset-0 grid-bg opacity-10"></div>
         <div class="max-w-7xl mx-auto px-6 relative z-10">
           <div class="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-6 text-center">
             <Reveal v-for="(stat, index) in STATS" :key="index" :delay="index * 100">
               <div class="flex flex-col items-center">
-                <div class="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 mb-2 font-sora">
+                <div class="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber to-teal mb-2 font-sora">
                   {{ stat.value }}
                 </div>
-                <div class="text-slate-400 font-medium tracking-wide text-sm uppercase">
+                <div class="text-text-secondary font-medium tracking-wide text-sm uppercase">
                   {{ stat.label }}
                 </div>
               </div>
@@ -161,27 +161,27 @@
       </section>
 
       <!-- Portfolio Section -->
-      <section id="portfolio" class="py-24 bg-[#F8FAFC]">
+      <section id="portfolio" class="py-24 bg-panel-2">
         <div class="max-w-7xl mx-auto px-6">
           <div class="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
             <Reveal>
-              <div class="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-sm font-semibold mb-6 tracking-wide uppercase">
-                <span class="w-2 h-2 rounded-full bg-blue-600 mr-2 animate-pulse"></span>
+              <div class="inline-flex items-center px-3 py-1 rounded-full bg-amber/10 border border-amber/20 text-amber text-sm font-semibold mb-6 tracking-wide uppercase">
+                <span class="w-2 h-2 rounded-full bg-amber mr-2 animate-pulse"></span>
                 Case Studies
               </div>
-              <h2 class="text-3xl md:text-5xl font-sora font-bold mb-4 text-slate-900">Featured Work</h2>
-              <p class="text-slate-600 max-w-xl">Explore how we've helped ambitious companies scale their operations and disrupt their industries.</p>
+              <h2 class="text-3xl md:text-5xl font-sora font-bold mb-4 text-text-primary">Featured Work</h2>
+              <p class="text-text-secondary max-w-xl">Explore how we've helped ambitious companies scale their operations and disrupt their industries.</p>
             </Reveal>
-            
+
             <Reveal :delay="200">
               <div class="flex flex-wrap gap-2">
-                <button 
-                  v-for="f in filters" 
+                <button
+                  v-for="f in filters"
                   :key="f"
                   @click="filter = f"
                   :class="[
                     'px-4 py-2 rounded-full text-sm font-medium transition-all',
-                    filter === f ? 'bg-slate-900 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
+                    filter === f ? 'bg-bg-dark text-text-primary shadow-md' : 'bg-panel text-text-secondary border border-panel-line hover:border-panel-line'
                   ]"
                 >
                   {{ f }}
@@ -192,28 +192,28 @@
 
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             <Reveal v-for="(project, index) in filteredProjects" :key="`${project.title}-${index}`" :delay="index * 100">
-              <Link :href="route('case-study.show', project.slug)" class="block group rounded-3xl overflow-hidden bg-white border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300">
+              <Link :href="route('case-study.show', project.slug)" class="block group rounded-3xl overflow-hidden bg-panel border border-panel-line shadow-sm hover:shadow-xl transition-all duration-300">
                 <div class="relative h-60 overflow-hidden">
-                  <div class="absolute inset-0 bg-slate-900/10 group-hover:bg-transparent transition-colors z-10"></div>
-                  <img 
-                    :src="project.img" 
-                    :alt="project.title" 
+                  <div class="absolute inset-0 bg-bg-dark/10 group-hover:bg-transparent transition-colors z-10"></div>
+                  <img
+                    :src="project.img"
+                    :alt="project.title"
                     class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700"
                   />
                   <div class="absolute top-4 left-4 z-20">
-                    <span class="px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-xs font-bold text-slate-800">
+                    <span class="px-3 py-1 bg-panel/90  rounded-full text-xs font-bold text-text-primary">
                       {{ project.category }}
                     </span>
                   </div>
                 </div>
                 <div class="p-6">
-                  <h3 class="text-xl font-sora font-bold mb-3 group-hover:text-blue-600 transition-colors text-slate-900">{{ project.title }}</h3>
+                  <h3 class="text-xl font-sora font-bold mb-3 group-hover:text-amber transition-colors text-text-primary">{{ project.title }}</h3>
                   <div class="flex flex-wrap gap-2 mb-4">
-                    <span v-for="tag in project.tags" :key="tag" class="px-2 py-1 bg-slate-100 text-slate-500 rounded text-xs font-medium">
+                    <span v-for="tag in project.tags" :key="tag" class="px-2 py-1 bg-panel-2 text-text-muted rounded text-xs font-medium">
                       {{ tag }}
                     </span>
                   </div>
-                  <div class="flex items-center text-blue-600 font-medium text-sm">
+                  <div class="flex items-center text-amber font-medium text-sm">
                     View Case Study <ArrowRightIcon class="w-4 h-4 ml-1 transform group-hover:translate-x-1 transition-transform" />
                   </div>
                 </div>
@@ -224,27 +224,27 @@
       </section>
 
       <!-- Process and FAQ -->
-      <section class="py-24 bg-white border-t border-slate-100">
+      <section class="py-24 bg-panel border-t border-panel-line">
         <div class="max-w-7xl mx-auto px-6">
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-16">
-            
+
             <!-- Why Choose Us / Process -->
             <div>
               <Reveal>
-                <div class="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-sm font-semibold mb-6 tracking-wide uppercase">
-                  <span class="w-2 h-2 rounded-full bg-blue-600 mr-2 animate-pulse"></span>
+                <div class="inline-flex items-center px-3 py-1 rounded-full bg-amber/10 border border-amber/20 text-amber text-sm font-semibold mb-6 tracking-wide uppercase">
+                  <span class="w-2 h-2 rounded-full bg-amber mr-2 animate-pulse"></span>
                   The Process
                 </div>
-                <h2 class="text-3xl md:text-4xl font-sora font-bold mb-6 text-slate-900">How We Build Silicon Valley Standard Products</h2>
-                
-                <div class="space-y-8 mt-10 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
+                <h2 class="text-3xl md:text-4xl font-sora font-bold mb-6 text-text-primary">How We Build Silicon Valley Standard Products</h2>
+
+                <div class="space-y-8 mt-10 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-panel-line before:to-transparent">
                   <div v-for="(step, idx) in PROCESS" :key="idx" class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                    <div class="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-blue-100 text-blue-600 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
+                    <div class="flex items-center justify-center w-10 h-10 rounded-full border border-panel-line bg-amber/15 text-amber shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
                       <CheckCircleIcon class="w-5 h-5" />
                     </div>
-                    <div class="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-slate-100 bg-slate-50 shadow-sm group-hover:shadow-md transition-shadow">
-                      <h4 class="font-bold text-slate-900 mb-1 font-sora">{{ step.title }}</h4>
-                      <p class="text-sm text-slate-600">{{ step.desc }}</p>
+                    <div class="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-panel-line bg-panel-2 shadow-sm group-hover:shadow-md transition-shadow">
+                      <h4 class="font-bold text-text-primary mb-1 font-sora">{{ step.title }}</h4>
+                      <p class="text-sm text-text-secondary">{{ step.desc }}</p>
                     </div>
                   </div>
                 </div>
@@ -254,31 +254,31 @@
             <!-- FAQ -->
             <div>
               <Reveal :delay="200">
-                <div class="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-sm font-semibold mb-6 tracking-wide uppercase">
-                  <span class="w-2 h-2 rounded-full bg-blue-600 mr-2 animate-pulse"></span>
+                <div class="inline-flex items-center px-3 py-1 rounded-full bg-amber/10 border border-amber/20 text-amber text-sm font-semibold mb-6 tracking-wide uppercase">
+                  <span class="w-2 h-2 rounded-full bg-amber mr-2 animate-pulse"></span>
                   FAQ
                 </div>
-                <h2 class="text-3xl md:text-4xl font-sora font-bold mb-6 text-slate-900">Common Questions</h2>
-                
+                <h2 class="text-3xl md:text-4xl font-sora font-bold mb-6 text-text-primary">Common Questions</h2>
+
                 <div class="space-y-4 mt-10">
-                  <div 
-                    v-for="(faq, index) in FAQS" 
-                    :key="index" 
-                    :class="['border border-slate-200 rounded-2xl overflow-hidden transition-all duration-300', openFaq === index ? 'bg-slate-50 shadow-sm' : 'bg-white']"
+                  <div
+                    v-for="(faq, index) in FAQS"
+                    :key="index"
+                    :class="['border border-panel-line rounded-2xl overflow-hidden transition-all duration-300', openFaq === index ? 'bg-panel-2 shadow-sm' : 'bg-panel']"
                   >
-                    <button 
-                      class="w-full px-6 py-5 text-left font-semibold flex justify-between items-center focus:outline-none text-slate-900 font-sora"
+                    <button
+                      class="w-full px-6 py-5 text-left font-semibold flex justify-between items-center focus:outline-none text-text-primary font-sora"
                       @click="openFaq = openFaq === index ? null : index"
                     >
                       {{ faq.q }}
-                      <ChevronRightIcon 
-                        :class="['w-5 h-5 text-slate-400 transition-transform duration-300', openFaq === index ? 'rotate-90 text-blue-600' : '']" 
+                      <ChevronRightIcon
+                        :class="['w-5 h-5 text-text-secondary transition-transform duration-300', openFaq === index ? 'rotate-90 text-amber' : '']"
                       />
                     </button>
-                    <div 
+                    <div
                       :class="['px-6 overflow-hidden transition-all duration-300', openFaq === index ? 'max-h-40 pb-5 opacity-100' : 'max-h-0 opacity-0']"
                     >
-                      <p class="text-slate-600 text-sm leading-relaxed">{{ faq.a }}</p>
+                      <p class="text-text-secondary text-sm leading-relaxed">{{ faq.a }}</p>
                     </div>
                   </div>
                 </div>
@@ -290,22 +290,22 @@
 
       <!-- CTA -->
       <section class="py-24 relative overflow-hidden">
-        <div class="absolute inset-0 bg-slate-900"></div>
-        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-3xl h-full bg-blue-600/20 blur-3xl rounded-full pointer-events-none"></div>
-        
+        <div class="absolute inset-0 bg-bg-dark"></div>
+        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-3xl h-full bg-amber/20 blur-3xl rounded-full pointer-events-none"></div>
+
         <div class="max-w-5xl mx-auto px-6 relative z-10 text-center">
           <Reveal>
-            <h2 class="text-4xl md:text-6xl font-extrabold text-white mb-6 font-sora">
-              Ready to build something <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">extraordinary?</span>
+            <h2 class="text-4xl md:text-6xl font-extrabold text-text-primary mb-6 font-sora">
+              Ready to build something <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber to-teal">extraordinary?</span>
             </h2>
-            <p class="text-xl text-slate-400 mb-10 max-w-2xl mx-auto">
+            <p class="text-xl text-text-secondary mb-10 max-w-2xl mx-auto">
               Partner with us to transform your vision into a scalable, high-performance digital reality. Get a free technical consultation today.
             </p>
             <div class="flex flex-col sm:flex-row justify-center gap-4">
-              <button class="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-bold text-lg transition-all shadow-xl shadow-blue-500/20 transform hover:-translate-y-1">
+              <button class="px-8 py-4 bg-amber hover:bg-amber/100 text-text-primary rounded-full font-bold text-lg transition-all shadow-xl shadow-amber/20 transform hover:-translate-y-1">
                 Book a Free Strategy Call
               </button>
-              <button class="px-8 py-4 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-full font-bold text-lg transition-all backdrop-blur-sm">
+              <button class="px-8 py-4 bg-panel-2/60 hover:bg-panel-2 border border-panel-line text-text-primary rounded-full font-bold text-lg transition-all ">
                 Contact Sales
               </button>
             </div>
@@ -315,73 +315,73 @@
     </main>
 
     <!-- Footer -->
-    <footer class="bg-slate-950 text-slate-400 py-16 border-t border-slate-900">
+    <footer class="bg-bg-dark text-text-secondary py-16 border-t border-panel-line">
       <div class="max-w-7xl mx-auto px-6">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10 mb-16">
           <div class="lg:col-span-2">
             <div class="flex items-center gap-2 mb-6">
-              <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
-                <CodeIcon class="text-white w-5 h-5" />
+              <div class="w-8 h-8 rounded-lg bg-amber flex items-center justify-center">
+                <CodeIcon class="text-text-primary w-5 h-5" />
               </div>
-              <span class="font-sora font-bold text-xl tracking-tight text-white">CoreVisys</span>
+              <span class="font-sora font-bold text-xl tracking-tight text-text-primary">CoreVisys</span>
             </div>
             <p class="text-sm leading-relaxed mb-6 max-w-xs">
               A premium software development agency building enterprise-grade digital products for modern companies.
             </p>
             <div class="flex space-x-4">
-              <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-colors cursor-pointer"><MailIcon class="w-4 h-4" /></div>
-              <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-colors cursor-pointer"><PhoneIcon class="w-4 h-4" /></div>
-              <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-blue-600 hover:text-white transition-colors cursor-pointer"><MapPinIcon class="w-4 h-4" /></div>
+              <div class="w-10 h-10 rounded-full bg-panel-2/50 flex items-center justify-center hover:bg-amber hover:text-text-primary transition-colors cursor-pointer"><MailIcon class="w-4 h-4" /></div>
+              <div class="w-10 h-10 rounded-full bg-panel-2/50 flex items-center justify-center hover:bg-amber hover:text-text-primary transition-colors cursor-pointer"><PhoneIcon class="w-4 h-4" /></div>
+              <div class="w-10 h-10 rounded-full bg-panel-2/50 flex items-center justify-center hover:bg-amber hover:text-text-primary transition-colors cursor-pointer"><MapPinIcon class="w-4 h-4" /></div>
             </div>
           </div>
-          
+
           <div>
-            <h4 class="text-white font-bold mb-4 font-sora">Services</h4>
+            <h4 class="text-text-primary font-bold mb-4 font-sora">Services</h4>
             <ul class="space-y-3 text-sm">
-              <li><Link href="/services/custom-software" class="hover:text-blue-400 transition-colors">Custom Software</Link></li>
-              <li><Link href="/services/web-applications" class="hover:text-blue-400 transition-colors">Web Applications</Link></li>
-              <li><Link href="/services/mobile-apps" class="hover:text-blue-400 transition-colors">Mobile App Dev</Link></li>
-              <li><Link href="/services/ai-ml" class="hover:text-blue-400 transition-colors">AI & Machine Learning</Link></li>
-              <li><Link href="/services/cloud-solutions" class="hover:text-blue-400 transition-colors">Cloud Architecture</Link></li>
+              <li><Link href="/services/custom-software" class="hover:text-amber transition-colors">Custom Software</Link></li>
+              <li><Link href="/services/web-applications" class="hover:text-amber transition-colors">Web Applications</Link></li>
+              <li><Link href="/services/mobile-apps" class="hover:text-amber transition-colors">Mobile App Dev</Link></li>
+              <li><Link href="/services/ai-ml" class="hover:text-amber transition-colors">AI & Machine Learning</Link></li>
+              <li><Link href="/services/cloud-solutions" class="hover:text-amber transition-colors">Cloud Architecture</Link></li>
             </ul>
           </div>
 
           <div>
-            <h4 class="text-white font-bold mb-4 font-sora">Company</h4>
+            <h4 class="text-text-primary font-bold mb-4 font-sora">Company</h4>
             <ul class="space-y-3 text-sm">
-              <li><Link :href="route('company')" class="hover:text-blue-400 transition-colors">About Us</Link></li>
-              <li><Link :href="route('case-study')" class="hover:text-blue-400 transition-colors">Case Studies</Link></li>
-              <li><Link :href="route('careers')" class="hover:text-blue-400 transition-colors">Careers</Link></li>
-              <li><Link :href="route('insights')" class="hover:text-blue-400 transition-colors">Blog</Link></li>
-              <li><Link :href="route('contact')" class="hover:text-blue-400 transition-colors">Contact</Link></li>
+              <li><Link :href="route('company')" class="hover:text-amber transition-colors">About Us</Link></li>
+              <li><Link :href="route('case-study')" class="hover:text-amber transition-colors">Case Studies</Link></li>
+              <li><Link :href="route('careers')" class="hover:text-amber transition-colors">Careers</Link></li>
+              <li><Link :href="route('insights')" class="hover:text-amber transition-colors">Blog</Link></li>
+              <li><Link :href="route('contact')" class="hover:text-amber transition-colors">Contact</Link></li>
             </ul>
           </div>
 
           <div>
-            <h4 class="text-white font-bold mb-4 font-sora">Legal</h4>
+            <h4 class="text-text-primary font-bold mb-4 font-sora">Legal</h4>
             <ul class="space-y-3 text-sm">
-              <li><Link href="/privacy-policy" class="hover:text-blue-400 transition-colors">Privacy Policy</Link></li>
-              <li><Link href="/terms-of-service" class="hover:text-blue-400 transition-colors">Terms of Service</Link></li>
-              <li><Link href="/cookie-policy" class="hover:text-blue-400 transition-colors">Cookie Policy</Link></li>
+              <li><Link href="/privacy-policy" class="hover:text-amber transition-colors">Privacy Policy</Link></li>
+              <li><Link href="/terms-of-service" class="hover:text-amber transition-colors">Terms of Service</Link></li>
+              <li><Link href="/cookie-policy" class="hover:text-amber transition-colors">Cookie Policy</Link></li>
             </ul>
           </div>
         </div>
-        
-        <div class="pt-8 border-t border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 text-sm">
+
+        <div class="pt-8 border-t border-panel-line flex flex-col md:flex-row justify-between items-center gap-4 text-sm">
           <p>© {{ new Date().getFullYear() }} CoreVisys Technologies. All rights reserved.</p>
           <div class="flex items-center gap-2">
             <span class="flex h-2 w-2 relative">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal/40 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-teal"></span>
             </span>
             All systems operational
           </div>
         </div>
       </div>
     </footer>
-    
+
     <!-- Floating WhatsApp / Chat Button -->
-    <button class="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:bg-blue-700 hover:scale-110 transition-all z-50">
+    <button class="fixed bottom-6 right-6 w-14 h-14 bg-amber text-text-primary rounded-full shadow-2xl flex items-center justify-center hover:bg-amber-hover hover:scale-110 transition-all z-50">
       <MailIcon class="w-6 h-6" />
     </button>
   </div>
@@ -391,21 +391,21 @@
 import { Head, Link } from '@inertiajs/vue3';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import Reveal from '@/Components/Reveal.vue';
-import { 
-  Menu as MenuIcon, 
-  X as XIcon, 
-  ChevronRight as ChevronRightIcon, 
-  Code as CodeIcon, 
-  Smartphone as SmartphoneIcon, 
-  Globe as GlobeIcon, 
-  Cpu as CpuIcon, 
-  Cloud as CloudIcon, 
-  ArrowRight as ArrowRightIcon, 
-  CheckCircle as CheckCircleIcon, 
-  Layers as LayersIcon, 
-  Mail as MailIcon, 
-  MapPin as MapPinIcon, 
-  Phone as PhoneIcon 
+import {
+  Menu as MenuIcon,
+  X as XIcon,
+  ChevronRight as ChevronRightIcon,
+  Code as CodeIcon,
+  Smartphone as SmartphoneIcon,
+  Globe as GlobeIcon,
+  Cpu as CpuIcon,
+  Cloud as CloudIcon,
+  ArrowRight as ArrowRightIcon,
+  CheckCircle as CheckCircleIcon,
+  Layers as LayersIcon,
+  Mail as MailIcon,
+  MapPin as MapPinIcon,
+  Phone as PhoneIcon
 } from 'lucide-vue-next';
 
 const isOpen = ref(false);
@@ -454,8 +454,8 @@ const FAQS = [
 ];
 
 const filteredProjects = computed(() => {
-  return filter.value === 'All' 
-    ? PORTFOLIO 
+  return filter.value === 'All'
+    ? PORTFOLIO
     : PORTFOLIO.filter(p => p.category === filter.value);
 });
 
@@ -538,7 +538,7 @@ onUnmounted(() => {
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #2563EB 0%, #06B6D4 100%);
+  background: linear-gradient(135deg, var(--amber) 0%, var(--teal) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
