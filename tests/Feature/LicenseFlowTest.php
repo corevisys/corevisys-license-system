@@ -55,7 +55,7 @@ class LicenseFlowTest extends TestCase
 
         $activateResponse->assertStatus(200)
             ->assertJsonPath('status', 'success')
-            ->assertJsonPath('data.license_status', 'active');
+            ->assertJsonPath('data.status', 'active');
 
         // 5. Verify Binding (Same Domain) - read-only check has no side effects.
         $checkResponse = $this->postJson('/api/v1/license/check', [

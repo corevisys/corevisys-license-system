@@ -4,6 +4,8 @@ namespace App\Support;
 
 final class OfflineLicenseVerification
 {
+    public const SIGNING_ALGORITHM = 'RSA-SHA256';
+
     public static function canonicalizePayload(array $payload): string
     {
         $normalized = self::normalizeValue($payload);
@@ -28,7 +30,7 @@ final class OfflineLicenseVerification
             'key_id' => $activeKeyId,
             'active_key_id' => $activeKeyId,
             'public_key' => $activePublicKey,
-            'algorithm' => config('services.license.signing_algorithm', 'RSA-SHA256'),
+            'algorithm' => self::SIGNING_ALGORITHM,
             'available_keys' => array_map(
                 fn (string $keyId, string $publicKey) => ['key_id' => $keyId, 'public_key' => $publicKey],
                 array_keys($keyMap),

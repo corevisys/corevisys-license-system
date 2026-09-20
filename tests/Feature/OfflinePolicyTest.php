@@ -13,6 +13,19 @@ class OfflinePolicyTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_shared_response_contract_fixture_matches_server_envelope(): void
+    {
+        $fixturePath = file_exists(base_path('tests/Fixtures/license-response-contract.json'))
+            ? base_path('tests/Fixtures/license-response-contract.json')
+            : base_path('../corevisys-license-package/tests/Fixtures/license-response-contract.json');
+        $contract = json_decode(file_get_contents($fixturePath), true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertSame([
+            'envelope' => ['success', 'status', 'message', 'data', 'signature', 'key_id', 'algorithm'],
+            'data' => ['status', 'license_id', 'product_code', 'license_type', 'expires_at', 'features', 'issued_at', 'offline_valid_until', 'is_grace_period'],
+        ], $contract);
+    }
+
     public function test_activate_returns_offline_validation_fields_and_headers()
     {
         $user = User::factory()->create();
@@ -78,12 +91,18 @@ PEM;
             ->assertJsonStructure([
                 'status',
                 'data' => [
-                    'license_status',
+                    'status',
+                    'license_id',
+                    'product_code',
+                    'license_type',
+                    'expires_at',
+                    'features',
                     'offline_valid_until',
-                    'issued_at'
+                    'issued_at',
+                    'is_grace_period',
                 ],
-                'payload',
-                'server_signature',
+                'success',
+                'signature',
                 'key_id',
                 'algorithm'
             ]);
@@ -158,8 +177,8 @@ PEM;
                     'license_status',
                     'history',
                 ],
-                'payload',
-                'server_signature',
+                'success',
+                'signature',
                 'key_id',
                 'algorithm',
             ]);

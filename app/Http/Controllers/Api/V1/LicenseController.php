@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\License;
 use App\Services\LicenseService;
 use App\Support\OfflineLicenseVerification;
 use Illuminate\Http\Request;
@@ -37,14 +38,7 @@ class LicenseController extends Controller
             return response()->json($result, 403);
         }
 
-        return $this->successResponse([
-            'license_status' => $result['license']->status,
-            'type' => $result['license']->type,
-            'license_type' => $result['license']->type,
-            'expires_at' => $result['license']->expires_at ? $result['license']->expires_at->toIso8601String() : null,
-            'issued_at' => now()->toIso8601String(),
-            'offline_valid_until' => now()->addDays((int) config('license.offline_validity_days', 7))->toIso8601String(),
-        ]);
+        return $this->successResponse($this->licensePayload($result['license']));
     }
 
     /**
@@ -92,15 +86,7 @@ class LicenseController extends Controller
             return response()->json(['status' => false, 'message' => 'License Expired'], 403);
         }
 
-        return $this->successResponse([
-            'license_status' => $license->status,
-            'type' => $license->type,
-            'license_type' => $license->type,
-            'expires_at' => $license->expires_at ? $license->expires_at->toIso8601String() : null,
-            'is_grace_period' => (bool) ($license->expires_at && $license->expires_at->isPast()),
-            'issued_at' => now()->toIso8601String(),
-            'offline_valid_until' => now()->addDays((int) config('license.offline_validity_days', 7))->toIso8601String(),
-        ]);
+        return $this->successResponse($this->licensePayload($license));
     }
 
     /**
@@ -151,14 +137,7 @@ class LicenseController extends Controller
 
         if ($license->status === 'suspended') {
             // Return 200 with suspended status to avoid client wipe, just block
-            return $this->successResponse([
-                'license_status' => 'SUSPENDED',
-                'license_type' => $license->type,
-                'expires_at' => $license->expires_at ? $license->expires_at->toIso8601String() : null,
-                'is_grace_period' => (bool) ($license->expires_at && $license->expires_at->isPast()),
-                'issued_at' => now()->toIso8601String(),
-                // No offline_valid_until — suspended licenses must not receive an offline grant
-            ]);
+            return $this->successResponse($this->licensePayload($license, false));
         }
 
         if ($license->status !== 'active') {
@@ -175,14 +154,7 @@ class LicenseController extends Controller
             return response()->json(['status' => false, 'message' => 'License Expired'], 403);
         }
 
-        return $this->successResponse([
-            'license_status' => $license->status,
-            'license_type' => $license->type,
-            'expires_at' => $license->expires_at ? $license->expires_at->toIso8601String() : null,
-            'is_grace_period' => (bool) ($license->expires_at && $license->expires_at->isPast()),
-            'issued_at' => now()->toIso8601String(),
-            'offline_valid_until' => now()->addDays((int) config('license.offline_validity_days', 7))->toIso8601String(),
-        ]);
+        return $this->successResponse($this->licensePayload($license));
     }
 
     public function publicKey()
@@ -255,13 +227,34 @@ class LicenseController extends Controller
         $signed = $this->signResponse($data);
 
         return response()->json([
+            'success' => true,
             'status' => 'success',
+            'message' => null,
             'data' => $data,
-            'payload' => $signed['payload'] ?? null,
-            'server_signature' => $signed['server_signature'] ?? null,
+            'signature' => $signed['signature'] ?? null,
             'key_id' => $signed['key_id'] ?? null,
             'algorithm' => $signed['algorithm'] ?? null,
         ])->header('Cache-Control', 'max-age=3600, private');
+    }
+
+    protected function licensePayload(License $license, bool $offlineGrant = true): array
+    {
+        $product = $license->product;
+        $isGracePeriod = (bool) ($license->expires_at?->isPast() && $license->grace_expires_at?->isFuture());
+
+        return [
+            'status' => $license->status,
+            'license_id' => (string) $license->id,
+            'product_code' => $product?->slug ?? (string) $license->product_id,
+            'license_type' => $license->type,
+            'expires_at' => $license->expires_at?->toIso8601String(),
+            'features' => [],
+            'issued_at' => now()->toIso8601String(),
+            'offline_valid_until' => $offlineGrant
+                ? now()->addDays((int) config('license.offline_validity_days', 7))->toIso8601String()
+                : null,
+            'is_grace_period' => $isGracePeriod,
+        ];
     }
 
     protected function signResponse(array $data)
@@ -289,10 +282,9 @@ class LicenseController extends Controller
         }
 
         return [
-            'payload' => base64_encode($payload),
-            'server_signature' => base64_encode($signature),
+            'signature' => base64_encode($signature),
             'key_id' => config('services.license.signing_key_id', 'corevisys-key-1'),
-            'algorithm' => config('services.license.signing_algorithm', 'RSA-SHA256'),
+            'algorithm' => OfflineLicenseVerification::SIGNING_ALGORITHM,
         ];
     }
 }
