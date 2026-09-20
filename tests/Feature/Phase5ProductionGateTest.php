@@ -87,7 +87,7 @@ class Phase5ProductionGateTest extends TestCase
             'activated_at' => now(),
         ]);
 
-        for ($i = 0; $i < 60; $i++) {
+        for ($i = 0; $i < 5; $i++) {
             $this->postJson('/api/v1/license/pulse', [
                 'license_key' => 'RATE-PULSE-KEY',
                 'domain' => 'rate-pulse.test',

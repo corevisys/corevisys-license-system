@@ -1,5 +1,5 @@
-// Capture the public product page (/pricing/{slug}) across the 5 themes at
-// 1280 and 360 wide, writing PNGs into docs/theme-screenshots/.
+// Capture the public pages across the 5 themes at 1280 and 360 wide, writing
+// PNGs into docs/theme-screenshots/ plus a manifest.json.
 //
 // Uses only Node built-ins (fetch + global WebSocket, Node 22+) plus a
 // headless Chrome started over the DevTools Protocol. No new dependencies.
@@ -19,6 +19,18 @@ const OUT_DIR = 'docs/theme-screenshots';
 
 const THEMES = ['terminal', 'dark-modern', 'light-modern', 'solarized-dark', 'tokyo-night'];
 const WIDTHS = [1280, 360];
+
+// The 8 public pages. `product` uses the real active slug.
+const PAGES = [
+    { name: 'home', url: '/' },
+    { name: 'pricing', url: '/pricing' },
+    { name: 'product', url: `/pricing/${SLUG}` },
+    { name: 'developers', url: '/developers' },
+    { name: 'contact', url: '/contact' },
+    { name: 'privacy', url: '/privacy' },
+    { name: 'terms', url: '/terms' },
+    { name: 'cookies', url: '/cookies' },
+];
 
 const CHROME_CANDIDATES = [
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -115,6 +127,7 @@ async function main() {
     );
 
     const written = [];
+    const overflow = [];
 
     try {
         const target = await waitForDevtools();
@@ -125,46 +138,70 @@ async function main() {
 
         for (const width of WIDTHS) {
             for (const theme of THEMES) {
-                await client.send('Emulation.setDeviceMetricsOverride', {
-                    width,
-                    height: 900,
-                    deviceScaleFactor: 1,
-                    mobile: width < 600,
-                });
+                for (const page of PAGES) {
+                    await client.send('Emulation.setDeviceMetricsOverride', {
+                        width,
+                        height: 900,
+                        deviceScaleFactor: 1,
+                        mobile: width < 600,
+                    });
 
-                const url = `${BASE}/pricing/${SLUG}`;
-                await client.send('Page.navigate', { url });
-                await waitForLoad(client);
+                    const url = `${BASE}${page.url}`;
+                    await client.send('Page.navigate', { url });
+                    await waitForLoad(client);
 
-                // Force the theme after mount (the app would normally read it
-                // from settings.default_theme).
-                await client.send('Runtime.evaluate', {
-                    expression: `document.documentElement.setAttribute('data-theme', '${theme}')`,
-                });
-                await sleep(250);
+                    // Force the theme after mount (the app would normally read it
+                    // from settings.default_theme).
+                    await client.send('Runtime.evaluate', {
+                        expression: `document.documentElement.setAttribute('data-theme', '${theme}')`,
+                    });
+                    await sleep(250);
 
-                const { result: size } = await client.send('Runtime.evaluate', {
-                    expression: 'Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)',
-                    returnByValue: true,
-                });
+                    // Detect horizontal overflow at the current viewport width.
+                    const { result: metrics } = await client.send('Runtime.evaluate', {
+                        expression: `JSON.stringify({
+                            scrollWidth: document.documentElement.scrollWidth,
+                            innerWidth: window.innerWidth,
+                            scrollHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+                        })`,
+                        returnByValue: true,
+                    });
+                    const m = JSON.parse(metrics.value);
+                    if (m.scrollWidth > m.innerWidth + 1) {
+                        overflow.push({
+                            page: page.name,
+                            width,
+                            theme,
+                            scrollWidth: m.scrollWidth,
+                            innerWidth: m.innerWidth,
+                        });
+                    }
 
-                await client.send('Emulation.setDeviceMetricsOverride', {
-                    width,
-                    height: Math.max(900, Math.ceil(size.value)),
-                    deviceScaleFactor: 1,
-                    mobile: width < 600,
-                });
-                await sleep(250);
+                    await client.send('Emulation.setDeviceMetricsOverride', {
+                        width,
+                        height: Math.max(900, Math.ceil(m.scrollHeight)),
+                        deviceScaleFactor: 1,
+                        mobile: width < 600,
+                    });
+                    await sleep(250);
 
-                const shot = await client.send('Page.captureScreenshot', {
-                    format: 'png',
-                    captureBeyondViewport: true,
-                });
+                    const shot = await client.send('Page.captureScreenshot', {
+                        format: 'png',
+                        captureBeyondViewport: true,
+                    });
 
-                const file = `product-${width}-${theme}.png`;
-                await writeFile(join(OUT_DIR, file), Buffer.from(shot.data, 'base64'));
-                written.push({ file, width, theme, fullHeight: Math.ceil(size.value) });
-                console.log(`captured ${file} (${width}px, ${theme})`);
+                    const file = `${page.name}-${width}-${theme}.png`;
+                    await writeFile(join(OUT_DIR, file), Buffer.from(shot.data, 'base64'));
+                    written.push({
+                        file,
+                        page: page.name,
+                        url: page.url,
+                        width,
+                        theme,
+                        fullHeight: Math.ceil(m.scrollHeight),
+                    });
+                    console.log(`captured ${file} (${width}px, ${theme})`);
+                }
             }
         }
 
@@ -175,7 +212,17 @@ async function main() {
         await rm(userDataDir, { recursive: true, force: true }).catch(() => { });
     }
 
-    console.log('\n' + JSON.stringify(written, null, 2));
+    await writeFile(join(OUT_DIR, 'manifest.json'), JSON.stringify(written, null, 2) + '\n');
+
+    console.log(`\nWrote ${written.length} screenshots and manifest.json`);
+    if (overflow.length) {
+        console.log(`\nHorizontal overflow detected in ${overflow.length} capture(s):`);
+        for (const o of overflow) {
+            console.log(`  - ${o.page} @ ${o.width}px (${o.theme}): scrollWidth ${o.scrollWidth} > innerWidth ${o.innerWidth}`);
+        }
+    } else {
+        console.log('No horizontal overflow detected at any captured width.');
+    }
 }
 
 main().catch((err) => {

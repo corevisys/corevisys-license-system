@@ -178,7 +178,7 @@ Rate limiting is now explicitly enforced for the public license endpoints and is
 The test verifies both of these paths:
 
 - activation endpoint returns `429` after repeated requests: [tests/Feature/Phase5ProductionGateTest.php](../tests/Feature/Phase5ProductionGateTest.php#L11-L59)
-- pulse endpoint returns `429` after repeated requests: [tests/Feature/Phase5ProductionGateTest.php](../tests/Feature/Phase5ProductionGateTest.php#L61-L104)
+- pulse endpoint returns `429` after repeated requests (throttled at 5 requests/hour per license): [tests/Feature/Phase5ProductionGateTest.php](../tests/Feature/Phase5ProductionGateTest.php#L61-L104)
 
 ### 5.3 Webhook replay procedure and idempotency evidence
 

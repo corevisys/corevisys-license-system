@@ -52,7 +52,7 @@ export const lifecycle = [
     },
     {
         title: 'Stay in sync',
-        body: 'Send a lightweight POST /api/v1/license/pulse heartbeat to keep last_check_at current, and use POST /api/v1/license/check for a read-only status check with no side effects.',
+        body: 'Send a lightweight POST /api/v1/license/pulse heartbeat approximately once a month to keep last_check_at current. Use POST /api/v1/license/check for a read-only status check with no side effects.',
     },
     {
         title: 'Expiry & grace',
@@ -74,7 +74,7 @@ export const activationFacts = [
     { label: 'Domain binding', value: 'First domain (TOFU)' },
     { label: 'Activation limit', value: 'Set per license' },
     { label: 'Machine fingerprint', value: 'Optional, per license' },
-    { label: 'Offline validity window', value: '24 hours from activation' },
+    { label: 'Offline validity window', value: '7 days from last check (configurable)' },
     { label: 'Offline signing', value: 'RSA-SHA256 signature' },
 ];
 
@@ -95,7 +95,7 @@ export const licenseNotes = [
     },
     {
         title: 'Offline license',
-        body: 'Activation and heartbeat responses are signed with RSA-SHA256, so the app can verify a license for 24 hours without reaching the network.',
+        body: 'Activation and heartbeat responses are signed with RSA-SHA256, so the app can verify a license for up to 7 days without reaching the network.',
     },
     {
         title: 'Reset',
@@ -174,7 +174,7 @@ export const productFaqs = [
     },
     {
         q: 'Can the software verify a license without internet access?',
-        a: 'Yes. Activation and heartbeat responses are signed with RSA-SHA256, so the application can verify a license offline for 24 hours using the published public key.',
+        a: 'Yes. Activation and heartbeat responses are signed with RSA-SHA256, so the application can verify a license offline for typically 7 days (configurable) using the published public key.',
     },
     {
         q: 'How is the license delivered after payment?',
@@ -286,7 +286,8 @@ export const activationExample = {
     "license_status": "active",
     "license_type": "full",
     "expires_at": "2027-03-01T00:00:00+00:00",
-    "offline_valid_until": "2026-03-02T00:00:00+00:00"
+    "issued_at": "2026-03-01T00:00:00+00:00",
+    "offline_valid_until": "2026-03-08T00:00:00+00:00"
   },
   "payload": "<base64 canonical payload>",
   "server_signature": "<base64 RSA-SHA256 signature>",
@@ -323,7 +324,7 @@ export const offlineSteps = [
     },
     {
         title: 'Respect the window',
-        body: 'An activation is trusted for 24 hours offline. Reconnect to refresh the signed response before that window closes.',
+        body: 'The signed payload includes an offline_valid_until timestamp. Your application can operate without contacting the server until that date, typically 7 days from the last successful check or pulse. Suspended pulse responses intentionally omit offline_valid_until; clients must treat a missing offline_valid_until as no offline use.',
     },
     {
         title: 'Fail closed',
@@ -358,7 +359,7 @@ export const faqs = [
     },
     {
         q: 'How does offline verification work?',
-        a: 'API responses carry a canonicalised payload and an RSA-SHA256 signature. Your application caches the public key and the signed response, then verifies the signature locally. An activation is trusted offline for 24 hours.',
+        a: 'API responses carry a canonicalised payload and an RSA-SHA256 signature. Your application caches the public key and the signed response, then verifies the signature locally. The offline_valid_until field in the response tells you exactly how long the cached response is trusted — typically 7 days.',
     },
     {
         q: 'Which payment methods are supported?',
@@ -366,7 +367,7 @@ export const faqs = [
     },
     {
         q: 'Are activation attempts rate limited?',
-        a: 'Yes. Activation and check requests use a stricter throttle than heartbeat pulse requests, so frequent status checks stay cheap while activation stays protected.',
+        a: 'Yes. Activation and check requests use a strict per-license throttle. The pulse heartbeat endpoint allows up to 5 calls per hour per license, so occasional monthly check-ins stay well within limits.',
     },
     {
         q: 'How do I get support?',

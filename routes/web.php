@@ -699,7 +699,7 @@ Route::middleware('auth')->group(function () {
                 'status' => $l->status,
                 'expires_at' => $l->expires_at ? $l->expires_at->format('Y-m-d') : 'Lifetime',
                 'last_check_at' => $l->last_check_at ? $l->last_check_at->toDateTimeString() : null,
-                'is_running' => $l->last_check_at && $l->last_check_at->isAfter(now()->subHours(1)),
+                'is_running' => $l->isRunning(),
             ]);
             return Inertia::render('Admin/Licenses', ['licenses' => $licenses]);
         })->name('admin.licenses');
@@ -725,7 +725,8 @@ Route::middleware('auth')->group(function () {
                     'current_usage' => $license->activations()->where('status', 'success')->count(),
                     'expires_at' => $license->expires_at ? $license->expires_at->format('Y-m-d') : 'Lifetime',
                     'last_check_at' => $license->last_check_at ? $license->last_check_at->toDateTimeString() : null,
-                    'is_running' => $license->last_check_at && $license->last_check_at->isAfter(now()->subHours(1)),
+                    'next_expected_heartbeat' => $license->last_check_at ? $license->last_check_at->copy()->addDays((int) config('license.pulse_interval_days', 30))->toDateTimeString() : null,
+                    'is_running' => $license->isRunning(),
                     'history' => $license->activations->map(fn($a) => [
                         'id' => $a->id,
                         'created_at' => $a->created_at->toDateTimeString(),

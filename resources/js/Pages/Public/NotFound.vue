@@ -31,7 +31,7 @@ const links = [
                 >Back to home</Link>
                 <Link
                     :href="route('pricing')"
-                    class="inline-flex items-center rounded-lg border border-panel-line bg-panel-2 px-[18px] py-[11px] text-[14.5px] font-medium text-text-secondary hover:border-amber-dim"
+                    class="inline-flex items-center rounded-lg border border-panel-line bg-panel-2 px-[18px] py-[11px] text-[14.5px] font-medium text-text-primary hover:border-amber-dim"
                 >See pricing</Link>
             </div>
 

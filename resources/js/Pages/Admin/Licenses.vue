@@ -94,9 +94,9 @@ onUnmounted(() => {
                         <TableRow>
                             <TableHeaderCell>User / product</TableHeaderCell>
                             <TableHeaderCell>Security key</TableHeaderCell>
-                            <TableHeaderCell class="text-center">Live</TableHeaderCell>
+                            <TableHeaderCell class="text-center">Heartbeat</TableHeaderCell>
                             <TableHeaderCell>Status / type</TableHeaderCell>
-                            <TableHeaderCell>Expires / pulse</TableHeaderCell>
+                            <TableHeaderCell>Expires / last check</TableHeaderCell>
                             <TableHeaderCell class="text-right">Actions</TableHeaderCell>
                         </TableRow>
                     </TableHead>
@@ -111,9 +111,15 @@ onUnmounted(() => {
                             </TableCell>
                             <TableCell class="text-center">
                                 <div class="flex items-center justify-center gap-2">
-                                    <span class="h-2 w-2 rounded-full" :class="license.is_running ? 'bg-teal' : 'bg-panel-line'" />
-                                    <span class="text-[10px] font-bold uppercase tracking-[0.2em]" :class="license.is_running ? 'text-teal' : 'text-text-muted'">
-                                        {{ license.is_running ? 'Live' : 'Idle' }}
+                                    <span
+                                        class="h-2 w-2 rounded-full"
+                                        :class="license.is_running ? 'bg-teal' : (!license.last_check_at ? 'bg-panel-line' : 'bg-rose')"
+                                    />
+                                    <span
+                                        class="text-[10px] font-bold uppercase tracking-[0.2em]"
+                                        :class="license.is_running ? 'text-teal' : (!license.last_check_at ? 'text-text-muted' : 'text-rose')"
+                                    >
+                                        {{ license.is_running ? 'Running' : (!license.last_check_at ? 'Never' : 'Overdue') }}
                                     </span>
                                 </div>
                             </TableCell>
@@ -127,7 +133,7 @@ onUnmounted(() => {
                                 <div class="flex flex-col">
                                     <span class="mb-1 text-xs text-text-muted">{{ license.expires_at }}</span>
                                     <span class="text-[9px] font-black uppercase tracking-[0.2em] text-text-muted">
-                                        Last pulse: {{ license.last_check_at ? license.last_check_at.split(' ')[1] : 'Never' }}
+                                        Last check: {{ license.last_check_at ? license.last_check_at.split('T')[0] : 'Never' }}
                                     </span>
                                 </div>
                             </TableCell>

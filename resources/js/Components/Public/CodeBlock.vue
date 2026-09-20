@@ -9,7 +9,7 @@ defineProps({
 const copied = ref(false);
 
 const copy = async (event) => {
-    const target = event.currentTarget.closest('[data-code]')?.innerText ?? '';
+    const target = event.currentTarget.closest('[data-code]')?.querySelector('pre')?.innerText ?? '';
     try {
         await navigator.clipboard.writeText(target);
         copied.value = true;
@@ -21,12 +21,20 @@ const copy = async (event) => {
 </script>
 
 <template>
-    <div data-code class="overflow-hidden rounded-[10px] border border-panel-line bg-panel-2">
-        <div class="flex items-center justify-between border-b border-panel-line px-4 py-2">
-            <span class="font-mono text-[11.5px] uppercase tracking-wide text-text-muted">{{ heading }}</span>
+    <div data-code class="overflow-hidden rounded-2xl border border-panel-line bg-panel">
+        <!-- Terminal window bar: neutral dots only (no red/yellow/green). -->
+        <div class="flex items-center justify-between gap-3 border-b border-panel-line bg-panel-2 px-4 py-2.5">
+            <div class="flex min-w-0 items-center gap-3">
+                <span class="flex shrink-0 items-center gap-1.5" aria-hidden="true">
+                    <span class="h-2.5 w-2.5 rounded-full border border-panel-line bg-panel" />
+                    <span class="h-2.5 w-2.5 rounded-full border border-panel-line bg-panel" />
+                    <span class="h-2.5 w-2.5 rounded-full border border-panel-line bg-panel" />
+                </span>
+                <span class="truncate font-mono text-[11.5px] uppercase tracking-wide text-text-muted">{{ heading }}</span>
+            </div>
             <button
                 type="button"
-                class="font-mono text-[11.5px] text-amber hover:underline"
+                class="shrink-0 rounded-md border border-panel-line px-2 py-1 font-mono text-[11px] text-text-secondary transition-colors hover:border-brand-primary/40 hover:text-brand-primary"
                 @click="copy"
             >{{ copied ? 'copied' : 'copy' }}</button>
         </div>

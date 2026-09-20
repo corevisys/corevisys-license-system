@@ -9,6 +9,7 @@ import TableHeaderCell from '@/Components/UI/TableHeaderCell.vue';
 import TableRow from '@/Components/UI/TableRow.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
+import { Activity, Clock } from 'lucide-vue-next';
 
 const props = defineProps({
     license: Object,
@@ -64,21 +65,25 @@ const getStatusColor = (status) => {
                             <p class="text-sm font-bold uppercase tracking-[0.2em] text-text-muted">{{ license.type }} edition</p>
                         </div>
                         <div class="flex items-center gap-3">
-                            <Badge :status="license.is_running ? 'success' : 'default'">{{ license.is_running ? 'Live' : 'Idle' }}</Badge>
+                            <Badge :status="license.is_running ? 'success' : (!license.last_check_at ? 'default' : 'danger')">{{ license.is_running ? 'Running' : (!license.last_check_at ? 'Never' : 'Overdue') }}</Badge>
                             <Badge :status="getStatusColor(license.status)">{{ license.status }}</Badge>
                         </div>
                     </div>
 
-                    <div class="mb-8 flex items-center justify-between rounded-2xl border border-panel-line bg-panel-2 p-4">
+                    <div class="mb-8 grid grid-cols-1 gap-4 rounded-2xl border border-panel-line bg-panel-2 p-4 sm:grid-cols-2">
                         <div class="flex flex-col">
-                            <span class="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-text-muted">Last heartbeat link</span>
+                            <span class="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-text-muted">Last heartbeat</span>
                             <span class="flex items-center gap-2 text-xs font-bold text-text-primary">
-                                <svg class="h-3.5 w-3.5 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                <Activity class="h-3.5 w-3.5 text-teal" />
                                 {{ license.last_check_at || 'Never established' }}
                             </span>
                         </div>
-                        <div v-if="license.is_running" class="text-[9px] font-black uppercase tracking-[0.2em] text-teal">
-                            Verified connection active
+                        <div class="flex flex-col">
+                            <span class="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-text-muted">Next expected heartbeat</span>
+                            <span class="flex items-center gap-2 text-xs font-bold text-text-primary">
+                                <Clock class="h-3.5 w-3.5 text-teal" />
+                                {{ license.next_expected_heartbeat || 'Pending first heartbeat' }}
+                            </span>
                         </div>
                     </div>
 
@@ -182,12 +187,12 @@ const getStatusColor = (status) => {
                 <Card class="p-8">
                     <h3 class="mb-6 flex items-center gap-2 text-sm font-black uppercase tracking-[0.2em] text-text-primary">
                         <svg class="h-4 w-4 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        Recent pulse activity
+                        Recent activation history
                     </h3>
 
                     <div class="space-y-4">
                         <div v-for="log in license.history.slice(0, 5)" :key="log.id" class="flex items-start gap-4 rounded-xl border border-panel-line bg-panel-2 p-3">
-                            <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" :class="log.status === 'pulse' ? 'bg-teal' : 'bg-amber'" />
+                            <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" :class="log.status === 'success' ? 'bg-teal' : 'bg-amber'" />
                             <div class="flex-1">
                                 <div class="mb-1 flex items-center justify-between">
                                     <span class="text-[10px] font-black uppercase tracking-[0.2em] text-text-primary">{{ log.status }}</span>
@@ -224,7 +229,7 @@ const getStatusColor = (status) => {
                             <TableCell mono>{{ log.request_domain }}</TableCell>
                             <TableCell mono>{{ log.request_ip }}</TableCell>
                             <TableCell>
-                                <Badge :status="log.status === 'pulse' ? 'success' : 'default'">{{ log.status }}</Badge>
+                                <Badge :status="log.status === 'success' ? 'success' : 'default'">{{ log.status }}</Badge>
                             </TableCell>
                         </TableRow>
                     </tbody>

@@ -79,18 +79,25 @@
 @layer base {
     :root {
         /* Default: Light Modern (Billion-dollar SaaS feel) */
-        --color-brand-primary: #2563EB; /* Blue 600 */
-        --color-brand-secondary: #0F172A; /* Slate 900 */
-        --color-brand-accent: #06B6D4; /* Cyan 500 */
-        
-        --bg-primary: #F8FAFC; /* Slate 50 */
+        --color-brand-primary: #2563EB;
+        /* Blue 600 */
+        --color-brand-secondary: #0F172A;
+        /* Slate 900 */
+        --color-brand-accent: #06B6D4;
+        /* Cyan 500 */
+
+        --bg-primary: #F8FAFC;
+        /* Slate 50 */
         --bg-acrylic: rgba(248, 250, 252, 0.85);
         --glass-bg: rgba(255, 255, 255, 0.7);
         --glass-border: rgba(15, 23, 42, 0.08);
-        
-        --text-primary: #0F172A; /* Slate 900 */
-        --text-secondary: #334155; /* Slate 700 */
-        --text-muted: #64748b; /* Slate 500 */
+
+        --text-primary: #0F172A;
+        /* Slate 900 */
+        --text-secondary: #334155;
+        /* Slate 700 */
+        --text-muted: #64748b;
+        /* Slate 500 */
         --text-adaptive: #0F172A;
         --danger: #DC2626;
         --amber: var(--color-brand-primary);
@@ -104,15 +111,18 @@
 
     /* THEME: Dark Mode */
     [data-theme="dark-modern"] {
-        --color-brand-primary: #3B82F6; /* Blue 500 */
+        --color-brand-primary: #3B82F6;
+        /* Blue 500 */
         --color-brand-secondary: #0F172A;
-        --color-brand-accent: #22D3EE; /* Cyan 400 */
-        
-        --bg-primary: #0F172A; /* Slate 900 */
+        --color-brand-accent: #22D3EE;
+        /* Cyan 400 */
+
+        --bg-primary: #0F172A;
+        /* Slate 900 */
         --bg-acrylic: rgba(15, 23, 42, 0.85);
         --glass-bg: rgba(255, 255, 255, 0.03);
         --glass-border: rgba(255, 255, 255, 0.08);
-        
+
         --text-primary: #F8FAFC;
         --text-secondary: #CBD5E1;
         --text-muted: #94A3B8;
@@ -240,7 +250,7 @@
     .text-glow-primary {
         text-shadow: 0 0 10px rgba(37, 99, 235, 0.5);
     }
-    
+
     .text-glow-accent {
         text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
     }
@@ -251,5 +261,82 @@
 
     .animate-pulse-glow {
         animation: pulse-glow 4s ease-in-out infinite;
+    }
+
+    /* --- Public-site decorative utilities (theme-safe, token-only) --- */
+
+    /* Subtle grid pattern built from the theme's own text colour. */
+    .bg-grid {
+        background-image:
+            linear-gradient(to right, color-mix(in srgb, var(--text-primary) 5%, transparent) 1px, transparent 1px),
+            linear-gradient(to bottom, color-mix(in srgb, var(--text-primary) 5%, transparent) 1px, transparent 1px);
+        background-size: 44px 44px;
+    }
+
+    /* Blurred brand glow blob. Pair with .animate-pulse-glow. */
+    .hero-glow {
+        background: radial-gradient(circle at center,
+                color-mix(in srgb, var(--color-brand-primary) 22%, transparent),
+                transparent 70%);
+    }
+
+    /* Gradient heading text from brand tokens. */
+    .gradient-text {
+        background-image: linear-gradient(to right, var(--color-brand-primary), var(--color-brand-accent));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+
+    /* Card hover lift with a brand-tinted border. */
+    .card-lift {
+        transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .card-lift:hover {
+        transform: translateY(-4px);
+        border-color: color-mix(in srgb, var(--color-brand-primary) 40%, transparent);
+    }
+
+    /* Scroll-reveal: hidden until the observer adds .is-visible. */
+    .reveal {
+        opacity: 0;
+        transform: translateY(12px);
+        transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+
+    .reveal.is-visible {
+        opacity: 1;
+        transform: none;
+    }
+
+    /* Thin brand-tinted glow line used above the footer. */
+    .glow-line {
+        background: linear-gradient(to right,
+                transparent,
+                color-mix(in srgb, var(--color-brand-primary) 45%, transparent),
+                transparent);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+        .animate-float,
+        .animate-pulse-glow {
+            animation: none;
+        }
+
+        .reveal {
+            opacity: 1;
+            transform: none;
+            transition: none;
+        }
+
+        .card-lift {
+            transition: none;
+        }
+
+        .card-lift:hover {
+            transform: none;
+        }
     }
 }

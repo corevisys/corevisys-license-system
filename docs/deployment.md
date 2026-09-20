@@ -5,7 +5,7 @@
 1. Copy `.env.example` to `.env` and replace placeholders with real values for the target environment.
 2. Set `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://your-domain.example`, `APP_KEY` to a fresh generated key, and disable any local-only debugging flags.
 3. Configure production mail credentials in the environment (`MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME`).
-4. Configure `LICENSE_SIGNING_PRIVATE_KEY`, `LICENSE_SIGNING_PUBLIC_KEY`, `LICENSE_SIGNING_KEY_ID`, and `LICENSE_SIGNING_ALGORITHM` with a production key pair.
+4. Configure `LICENSE_SIGNING_PRIVATE_KEY`, `LICENSE_SIGNING_PUBLIC_KEY`, `LICENSE_SIGNING_KEY_ID`, and `LICENSE_SIGNING_ALGORITHM` with a production key pair. Also configure license cache policy variables: `OFFLINE_VALIDITY_DAYS` (default 7), `PULSE_INTERVAL_DAYS` (default 30), and `PULSE_GRACE_DAYS` (default 7).
 5. Configure Stripe and bKash production secrets through the deployment secret manager. Do not store them in committed files.
 6. Configure durable storage (`AWS_*`/`S3-compatible` settings) for receipts and backups.
 7. Run `php artisan migrate --force`, then run `php artisan license:migrate-legacy-keys --dry-run` to review legacy plaintext rows, followed by `php artisan license:migrate-legacy-keys` in the target environment.

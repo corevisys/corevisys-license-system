@@ -8,9 +8,12 @@ defineProps({
 </script>
 
 <template>
-    <div :class="align === 'center' ? 'text-center mx-auto max-w-2xl' : 'max-w-2xl'">
-        <p v-if="eyebrow" class="mb-3 font-mono text-[11.5px] uppercase tracking-[0.18em] text-amber">{{ eyebrow }}</p>
-        <h2 class="text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">{{ title }}</h2>
-        <p v-if="description" class="mt-3 text-sm leading-relaxed text-text-secondary sm:text-[15px]">{{ description }}</p>
+    <div :class="align === 'center' ? 'mx-auto max-w-2xl text-center' : 'max-w-2xl'">
+        <p
+            v-if="eyebrow"
+            class="mb-3 font-mono text-xs uppercase tracking-widest text-brand-primary"
+        >{{ eyebrow }}</p>
+        <h2 class="text-3xl font-semibold leading-tight tracking-tight text-text-primary sm:text-4xl">{{ title }}</h2>
+        <p v-if="description" class="mt-4 text-base leading-relaxed text-text-secondary">{{ description }}</p>
     </div>
 </template>

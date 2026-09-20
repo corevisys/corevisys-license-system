@@ -82,7 +82,23 @@ Current implementation uses a stable lifecycle and canonical enforcement logic:
 - activation and binding enforce the expected domain and fingerprint rules
 - grace-period handling is supported and tested
 - reset logic clears binding data and updates related records
-- the `revoked` status is part of the live license status model and is reconciled with the service-level state machine
+- the `revoked` status is part of the live license status model and reconciled with the admin management workflows (`stale` is not a DB status — the command is report-only)
+
+### Pulse heartbeat, offline window, and stale detection
+
+The platform enforces a periodic heartbeat and offline authorization window:
+
+- **Pulse heartbeat:** Clients sync approximately once per month via `POST /api/v1/license/pulse`. The endpoint updates `last_check_at` on the license record without creating activation rows.
+- **Offline validity window:** Configured via `config/license.php` (`OFFLINE_VALIDITY_DAYS`, default 7 days). All successful `activate`, `check`, and active `pulse` responses issue an `offline_valid_until` timestamp. Suspended licenses receive `active: false` without an offline grant.
+- **Heartbeat rate limiting:** Pulse requests are throttled per license (5 requests/hour keyed by `sha256(license_key | ip)`).
+- **Liveness helper:** `License::isRunning()` checks if `last_check_at` is within the active window (`pulse_interval_days` + `pulse_grace_days`, default 37 days).
+- **Stale detection (report-only):** `license:flag-stale` runs daily at 02:00 to detect active licenses whose `last_check_at` has exceeded the cutoff (`pulse_interval_days` + `pulse_grace_days`). It **never changes license status** — it logs overdue licenses to the application log only. `--dry-run` suppresses even the log write.
+
+Verified references:
+- [../config/license.php](../config/license.php)
+- [../app/Models/License.php](../app/Models/License.php#L68-L82)
+- [../app/Console/Commands/FlagStaleLicenses.php](../app/Console/Commands/FlagStaleLicenses.php)
+- [../app/Http/Controllers/Api/V1/LicenseController.php](../app/Http/Controllers/Api/V1/LicenseController.php#L130-L185)
 
 ### Fingerprint grace-period model
 
@@ -161,6 +177,7 @@ Current scheduled work in the project:
 |---|---|---|
 | Daily 00:00 | `license:renew-subscriptions` | Command dispatch and renewal logic are verified |
 | Daily 01:00 | `license:notify-expiring` | Expiry notification jobs are verified |
+| Daily 02:00 | `license:flag-stale` | **Report-only.** Logs licenses whose `last_check_at` exceeds the overdue cutoff; never changes DB status |
 | Monthly | `license:cleanup-expired` | Cleanup command behavior is verified |
 | Daily | `receipts:prune` | Registered in scheduler |
 | Queue worker / scheduler deployment | `supervisord` + cron | In-repo deployment config added and verified |
@@ -185,6 +202,7 @@ Operationally, the application is now aligned with a safer default posture:
 
 Verified references:
 
+- [../config/license.php](../config/license.php)
 - [../config/services.php](../config/services.php#L24-L55)
 - [../app/Services/StripePaymentService.php](../app/Services/StripePaymentService.php#L12-L27)
 - [../app/Services/BKashPaymentService.php](../app/Services/BKashPaymentService.php#L12-L38)
@@ -241,7 +259,7 @@ Rate limiting is part of the production gate and is proven by automated tests.
 The test verifies that:
 
 - the activation endpoint returns `429` after repeated requests: [../tests/Feature/Phase5ProductionGateTest.php](../tests/Feature/Phase5ProductionGateTest.php#L11-L59)
-- the pulse endpoint returns `429` after repeated requests: [../tests/Feature/Phase5ProductionGateTest.php](../tests/Feature/Phase5ProductionGateTest.php#L61-L104)
+- the pulse endpoint returns `429` after repeated requests (throttled at 5 requests/hour per license): [../tests/Feature/Phase5ProductionGateTest.php](../tests/Feature/Phase5ProductionGateTest.php#L61-L104)
 
 ### 9.3 Webhook replay procedure and idempotency evidence
 

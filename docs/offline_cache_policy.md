@@ -1,13 +1,21 @@
 # Client-Side Offline License Cache Policy
 
 **Status:** Implemented and verified in the server application; client-side verification remains an application-level responsibility in the client repo
-**Audited:** 2026-09-14
+**Audited:** 2026-09-20
 
 This document describes the current offline authorization protocol as implemented in the server code. Local storage alone is not a trust boundary: a client must validate the signed payload before trusting any cached authorization.
 
-## 1. Canonical payload format
+## 1. Canonical payload format and offline validity window
 
 The server canonicalizes payloads using deterministic JSON serialization with stable key ordering and UTF-8 encoding.
+
+### 1.1 Offline validity window and timestamps
+- **Default offline window:** 7 days from the last verified check (configurable via `OFFLINE_VALIDITY_DAYS` in `.env`, mapped to `config('license.offline_validity_days')`).
+- **Response fields:** Successful calls to `POST /api/v1/license/activate`, `POST /api/v1/license/check`, and active `POST /api/v1/license/pulse` include:
+  - `issued_at`: ISO-8601 timestamp when the signature/payload was issued.
+  - `offline_valid_until`: ISO-8601 timestamp designating the end of the offline grace grant (`now() + 7 days`).
+- **Suspended status behavior:** Suspended licenses received during `POST /api/v1/license/pulse` return `active: false` (or `license_status: "SUSPENDED"`) and intentionally have no `offline_valid_until`. Clients must treat a missing `offline_valid_until` as "no offline use allowed", failing closed immediately while offline.
+- **Heartbeat frequency:** Pulse requests are issued by clients approximately once per month. Pulse updates the license `last_check_at` timestamp on the server without creating redundant activation log entries.
 
 Canonicalization rule:
 
@@ -20,6 +28,7 @@ The current payload fields are defined in the verification helper and test suite
 
 - [../app/Support/OfflineLicenseVerification.php](../app/Support/OfflineLicenseVerification.php)
 - [../tests/Feature/OfflinePolicyTest.php](../tests/Feature/OfflinePolicyTest.php)
+- [../config/license.php](../config/license.php)
 
 ## 2. Public key distribution
 
@@ -66,6 +75,7 @@ The sample verification helper is available at:
 The helper includes the canonicalization and signature verification logic used by the tests. A client should enforce:
 
 - reject expired offline payloads
+- treat missing `offline_valid_until` as no offline use allowed (fail closed immediately)
 - reject unknown or revoked `key_id`
 - reject mismatched `client_id`, `license_id`, or `license_type`
 - verify the payload before trusting the local cache
@@ -105,6 +115,9 @@ The following parts are now implemented and verified in the application:
 - key ID support and overlap handling
 - revoked-key rejection
 - fail-closed server signing behavior
+- configurable offline validity window (default 7 days via `config/license.php`) with `offline_valid_until` and `issued_at` timestamps in responses
+- monthly client heartbeat (`POST /api/v1/license/pulse`) renewing `offline_valid_until` without activation row pollution
+- background scheduler overdue-license reporting (`license:flag-stale` — report-only, never changes DB status)
 - automated tests covering the protocol contract
 
 This is no longer listed as pending. The remaining responsibility is external to this repo: the client-side application or SDK must use the published metadata and verify the signature before trusting any offline authorization data.
