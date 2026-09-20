@@ -5,293 +5,97 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+/*
+|--------------------------------------------------------------------------
+| Public marketing routes
+|--------------------------------------------------------------------------
+| Compact, frontend-only public site. These routes render Inertia pages
+| and never touch business logic, services, payments, or license state.
+*/
+
 Route::get('/', function () {
-    return Inertia::render('Welcome', [
+    return Inertia::render('Public/Home', [
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
+        'featuredProducts' => \App\Models\Product::where('is_active', true)
+            ->orderBy('name')
+            ->take(3)
+            ->get(['id', 'name', 'slug', 'description']),
+    ]);
+})->name('home');
+
+Route::get('/pricing', function () {
+    return Inertia::render('Public/Pricing', [
         'products' => \App\Models\Product::where('is_active', true)->with('prices')->get(),
         'gatewaySettings' => \App\Models\SystemSetting::where('key', 'like', 'gateway_%_active')->pluck('value', 'key'),
     ]);
-});
+})->name('pricing');
 
-Route::get('/company', function () {
-    return Inertia::render('Company');
-})->name('company');
+// Per-product page. Only active products resolve; unknown or inactive slugs
+// render a friendly 404 inside the public layout.
+Route::get('/pricing/{slug}', function (string $slug) {
+    $product = \App\Models\Product::where('slug', $slug)
+        ->where('is_active', true)
+        ->with('prices')
+        ->first();
 
-Route::get('/services/custom-software', function () {
-    return Inertia::render('CustomSoftwareDevelopment');
-})->name('services.custom-software');
-
-Route::get('/services/web-applications', function () {
-    return Inertia::render('WebApplicationDevelopment');
-})->name('services.web-applications');
-
-Route::get('/services/mobile-apps', function () {
-    return Inertia::render('MobileAppDevelopment');
-})->name('services.mobile-apps');
-
-Route::get('/services/ai-ml', function () {
-    return Inertia::render('AiMachineLearning');
-})->name('services.ai-ml');
-
-Route::get('/services/cloud-solutions', function () {
-    return Inertia::render('CloudArchitecture');
-})->name('services.cloud');
-
-
-
-Route::get('/privacy-policy', function () {
-    return Inertia::render('PrivacyPolicy');
-})->name('privacy-policy');
-
-Route::get('/terms-of-service', function () {
-    return Inertia::render('TermsOfService');
-})->name('terms-of-service');
-
-Route::get('/cookie-policy', function () {
-    return Inertia::render('CookiePolicy');
-})->name('cookie-policy');
-
-Route::get('/insights', function () {
-    return Inertia::render('Insights');
-})->name('insights');
-
-Route::get('/case-study', function () {
-    return redirect('/#portfolio');
-})->name('case-study');
-
-Route::get('/case-study/{slug}', function ($slug) {
-    $caseStudies = [
-        'corevisys-analytics' => [
-            'title' => 'CoreVisys Analytics',
-            'category' => 'SaaS',
-            'description' => 'A scalable SaaS analytics platform that processes millions of data points in real-time, providing actionable insights for enterprise clients.',
-            'industry' => 'Data Analytics',
-            'duration' => '6 Months',
-            'services' => 'Next.js, Python, AWS',
-            'problems' => [
-                ['title' => 'Data Processing Lag', 'desc' => 'Legacy systems struggled with high data volume, causing significant delays in report generation.'],
-                ['title' => 'Complex UI', 'desc' => 'Users found the existing dashboard unintuitive and difficult to navigate.'],
-                ['title' => 'Scalability Issues', 'desc' => 'The platform crashed during peak traffic due to poor architecture.']
-            ],
-            'timeline' => [
-                ['phase' => 'Phase 1', 'title' => 'Architecture Revamp', 'desc' => 'Designed a serverless AWS architecture for dynamic scaling.'],
-                ['phase' => 'Phase 2', 'title' => 'Data Pipeline', 'desc' => 'Implemented Python microservices to handle stream processing.'],
-                ['phase' => 'Phase 3', 'title' => 'UI Overhaul', 'desc' => 'Built a modern, responsive Next.js frontend.']
-            ],
-            'features' => [
-                ['title' => 'Real-time Dashboards'],
-                ['title' => 'Predictive Analytics'],
-                ['title' => 'Custom Reports'],
-                ['title' => 'Automated Alerts']
-            ],
-            'results' => [
-                ['value' => '10x', 'label' => 'Faster Processing'],
-                ['value' => '99.9%', 'label' => 'Uptime'],
-                ['value' => '50%', 'label' => 'Cost Reduction'],
-                ['value' => '300+', 'label' => 'Enterprise Clients']
-            ],
-            'gallery' => [
-                ['src' => 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=600&q=80', 'alt' => 'Analytics Dashboard'],
-                ['src' => 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=600&q=80', 'alt' => 'Data Visualization'],
-                ['src' => 'https://images.unsplash.com/photo-1555421689-d68471e189f2?auto=format&fit=crop&w=600&q=80', 'alt' => 'Reporting Tool']
-            ]
-        ],
-        'finflow-banking-app' => [
-            'title' => 'FinFlow Banking App',
-            'category' => 'Mobile Apps',
-            'description' => 'A secure, high-performance banking application offering seamless cross-border transactions and real-time balance updates.',
-            'industry' => 'FinTech',
-            'duration' => '9 Months',
-            'services' => 'React Native, Node.js',
-            'problems' => [
-                ['title' => 'Security Vulnerabilities', 'desc' => 'The old app lacked biometric authentication and end-to-end encryption.'],
-                ['title' => 'Slow Transactions', 'desc' => 'Cross-border transfers took days to settle.'],
-                ['title' => 'Poor UX', 'desc' => 'The app was clunky and not optimized for modern smartphones.']
-            ],
-            'timeline' => [
-                ['phase' => 'Phase 1', 'title' => 'Security Audit', 'desc' => 'Identified and patched vulnerabilities in the legacy API.'],
-                ['phase' => 'Phase 2', 'title' => 'Mobile Dev', 'desc' => 'Built a cross-platform app using React Native.'],
-                ['phase' => 'Phase 3', 'title' => 'Payment Gateway', 'desc' => 'Integrated a high-speed ledger for instant settlements.']
-            ],
-            'features' => [
-                ['title' => 'Biometric Login'],
-                ['title' => 'Instant Transfers'],
-                ['title' => 'Expense Tracking'],
-                ['title' => 'Virtual Cards']
-            ],
-            'results' => [
-                ['value' => '2M+', 'label' => 'Active Users'],
-                ['value' => '0', 'label' => 'Security Breaches'],
-                ['value' => '80%', 'label' => 'Faster Transfers'],
-                ['value' => '4.8', 'label' => 'App Store Rating']
-            ],
-            'gallery' => [
-                ['src' => 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=600&q=80', 'alt' => 'Mobile Banking'],
-                ['src' => 'https://images.unsplash.com/photo-1555421689-d68471e189f2?auto=format&fit=crop&w=600&q=80', 'alt' => 'Transaction History'],
-                ['src' => 'https://images.unsplash.com/photo-1504868584819-f8e8b4b6d7e3?auto=format&fit=crop&w=600&q=80', 'alt' => 'Security Settings']
-            ]
-        ],
-        'global-logistics-pro' => [
-            'title' => 'Global Logistics Pro',
-            'category' => 'ERP',
-            'description' => 'A comprehensive enterprise resource planning system tailored for global supply chain and logistics management.',
-            'industry' => 'Logistics',
-            'duration' => '12 Months',
-            'services' => 'Laravel, Vue, PostgreSQL',
-            'problems' => [
-                ['title' => 'Fragmented Systems', 'desc' => 'Different departments used isolated software, causing data silos.'],
-                ['title' => 'Manual Tracking', 'desc' => 'Fleet tracking relied on manual updates and spreadsheets.'],
-                ['title' => 'Inefficient Routing', 'desc' => 'Delivery routes were not optimized, wasting fuel and time.']
-            ],
-            'timeline' => [
-                ['phase' => 'Phase 1', 'title' => 'System Integration', 'desc' => 'Unified 5 different legacy systems into a central Laravel backend.'],
-                ['phase' => 'Phase 2', 'title' => 'IoT Fleet Tracking', 'desc' => 'Integrated real-time GPS tracking for the entire fleet.'],
-                ['phase' => 'Phase 3', 'title' => 'AI Routing', 'desc' => 'Deployed machine learning models to optimize delivery routes.']
-            ],
-            'features' => [
-                ['title' => 'Real-time Tracking'],
-                ['title' => 'Inventory Management'],
-                ['title' => 'Automated Dispatch'],
-                ['title' => 'AI Route Optimization']
-            ],
-            'results' => [
-                ['value' => '30%', 'label' => 'Fuel Saved'],
-                ['value' => '100%', 'label' => 'Fleet Visibility'],
-                ['value' => '40%', 'label' => 'Efficiency Gain'],
-                ['value' => '$2M', 'label' => 'Annual Savings']
-            ],
-            'gallery' => [
-                ['src' => 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=600&q=80', 'alt' => 'Fleet Dashboard'],
-                ['src' => 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80', 'alt' => 'Warehouse Management'],
-                ['src' => 'https://images.unsplash.com/photo-1526628953301-3e589a6a8b74?auto=format&fit=crop&w=600&q=80', 'alt' => 'Route Map']
-            ]
-        ],
-        'healthtech-portal' => [
-            'title' => 'HealthTech Portal',
-            'category' => 'Web Apps',
-            'description' => 'A HIPAA-compliant patient management platform connecting doctors and patients via telemedicine and secure messaging.',
-            'industry' => 'Healthcare',
-            'duration' => '7 Months',
-            'services' => 'React, TypeScript, Node.js',
-            'problems' => [
-                ['title' => 'Compliance Risks', 'desc' => 'The old portal did not fully comply with new HIPAA regulations.'],
-                ['title' => 'No Telemedicine', 'desc' => 'Patients had to use third-party apps for video consultations.'],
-                ['title' => 'Poor Scheduling', 'desc' => 'The appointment booking system was prone to double-booking.']
-            ],
-            'timeline' => [
-                ['phase' => 'Phase 1', 'title' => 'Security Hardening', 'desc' => 'Implemented robust encryption and audit logging.'],
-                ['phase' => 'Phase 2', 'title' => 'WebRTC Integration', 'desc' => 'Built native video conferencing directly into the portal.'],
-                ['phase' => 'Phase 3', 'title' => 'Smart Scheduling', 'desc' => 'Developed a conflict-free, time-zone-aware booking calendar.']
-            ],
-            'features' => [
-                ['title' => 'HIPAA Compliance'],
-                ['title' => 'Video Consultations'],
-                ['title' => 'Secure Messaging'],
-                ['title' => 'E-Prescriptions']
-            ],
-            'results' => [
-                ['value' => '1M+', 'label' => 'Consultations'],
-                ['value' => '100%', 'label' => 'Compliance'],
-                ['value' => '60%', 'label' => 'Less No-shows'],
-                ['value' => '500+', 'label' => 'Clinics Using It']
-            ],
-            'gallery' => [
-                ['src' => 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=600&q=80', 'alt' => 'Patient Dashboard'],
-                ['src' => 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80', 'alt' => 'Video Call'],
-                ['src' => 'https://images.unsplash.com/photo-1555421689-d68471e189f2?auto=format&fit=crop&w=600&q=80', 'alt' => 'Medical Records']
-            ]
-        ],
-        'autocrm-ai' => [
-            'title' => 'AutoCRM AI',
-            'category' => 'AI Systems',
-            'description' => 'An intelligent CRM that leverages LLMs to automate customer interactions, email drafting, and lead scoring.',
-            'industry' => 'Sales & Marketing',
-            'duration' => '5 Months',
-            'services' => 'OpenAI, Python, Vue',
-            'problems' => [
-                ['title' => 'Manual Follow-ups', 'desc' => 'Sales reps spent 40% of their time writing routine emails.'],
-                ['title' => 'Poor Lead Scoring', 'desc' => 'High-value leads were often missed in the noise.'],
-                ['title' => 'Data Entry', 'desc' => 'Updating CRM records manually led to inaccurate data.']
-            ],
-            'timeline' => [
-                ['phase' => 'Phase 1', 'title' => 'LLM Integration', 'desc' => 'Fine-tuned OpenAI models on past successful sales emails.'],
-                ['phase' => 'Phase 2', 'title' => 'Lead AI', 'desc' => 'Created predictive models to score leads based on behavior.'],
-                ['phase' => 'Phase 3', 'title' => 'Workflow Automation', 'desc' => 'Built an intuitive Vue interface to manage automated workflows.']
-            ],
-            'features' => [
-                ['title' => 'AI Email Drafting'],
-                ['title' => 'Predictive Lead Scoring'],
-                ['title' => 'Automated Data Entry'],
-                ['title' => 'Chatbot Integration']
-            ],
-            'results' => [
-                ['value' => '40%', 'label' => 'Time Saved'],
-                ['value' => '25%', 'label' => 'Higher Conversion'],
-                ['value' => '10k+', 'label' => 'Emails Automated'],
-                ['value' => '95%', 'label' => 'Data Accuracy']
-            ],
-            'gallery' => [
-                ['src' => 'https://images.unsplash.com/photo-1535223289827-42f1e9919769?auto=format&fit=crop&w=600&q=80', 'alt' => 'CRM Dashboard'],
-                ['src' => 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=600&q=80', 'alt' => 'AI Insights'],
-                ['src' => 'https://images.unsplash.com/photo-1504868584819-f8e8b4b6d7e3?auto=format&fit=crop&w=600&q=80', 'alt' => 'Lead Pipeline']
-            ]
-        ],
-        'cloudsync-workspace' => [
-            'title' => 'CloudSync Workspace',
-            'category' => 'SaaS',
-            'description' => 'A unified collaborative workspace offering real-time document editing, project management, and team communication.',
-            'industry' => 'Productivity',
-            'duration' => '8 Months',
-            'services' => 'Vue, Tailwind, Supabase',
-            'problems' => [
-                ['title' => 'Tool Fatigue', 'desc' => 'Teams were paying for and juggling 5 different apps.'],
-                ['title' => 'Sync Conflicts', 'desc' => 'Offline edits caused major document versioning issues.'],
-                ['title' => 'Slow Search', 'desc' => 'Finding files across the organization was painfully slow.']
-            ],
-            'timeline' => [
-                ['phase' => 'Phase 1', 'title' => 'Supabase Backend', 'desc' => 'Set up real-time database subscriptions for instant updates.'],
-                ['phase' => 'Phase 2', 'title' => 'Editor Dev', 'desc' => 'Built a robust collaborative rich-text editor using CRDTs.'],
-                ['phase' => 'Phase 3', 'title' => 'Global Search', 'desc' => 'Implemented an Algolia-powered instant search engine.']
-            ],
-            'features' => [
-                ['title' => 'Real-time Editing'],
-                ['title' => 'Kanban Boards'],
-                ['title' => 'Instant Search'],
-                ['title' => 'Team Chat']
-            ],
-            'results' => [
-                ['value' => '500k', 'label' => 'Active Workspaces'],
-                ['value' => '10ms', 'label' => 'Sync Latency'],
-                ['value' => '5-in-1', 'label' => 'Tools Replaced'],
-                ['value' => '4.9', 'label' => 'User Rating']
-            ],
-            'gallery' => [
-                ['src' => 'https://images.unsplash.com/photo-1600132806370-bf17e65e942f?auto=format&fit=crop&w=600&q=80', 'alt' => 'Workspace UI'],
-                ['src' => 'https://images.unsplash.com/photo-1526628953301-3e589a6a8b74?auto=format&fit=crop&w=600&q=80', 'alt' => 'Collaborative Editor'],
-                ['src' => 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=600&q=80', 'alt' => 'Project Board']
-            ]
-        ]
-    ];
-
-    if (!array_key_exists($slug, $caseStudies)) {
-        abort(404);
+    if (! $product) {
+        return Inertia::render('Public/NotFound', [
+            'message' => 'That product is not available. It may not exist, or it is no longer on sale.',
+        ])->toResponse(request())->setStatusCode(404);
     }
 
-    return Inertia::render('CaseStudy', [
-        'caseStudy' => $caseStudies[$slug]
+    return Inertia::render('Public/Product', [
+        'product' => $product,
+        'otherProducts' => \App\Models\Product::where('is_active', true)
+            ->where('id', '!=', $product->id)
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug', 'description']),
+        'gatewaySettings' => \App\Models\SystemSetting::where('key', 'like', 'gateway_%_active')->pluck('value', 'key'),
     ]);
-})->name('case-study.show');
+})->where('slug', '[A-Za-z0-9._-]+')->name('pricing.product');
 
-Route::get('/careers', function () {
-    return Inertia::render('Careers');
-})->name('careers');
+Route::get('/developers', function () {
+    return Inertia::render('Public/Developers');
+})->name('developers');
 
 Route::get('/contact', function () {
-    return Inertia::render('Contact');
+    return Inertia::render('Public/Contact');
 })->name('contact');
+
+Route::get('/privacy', function () {
+    return Inertia::render('Public/Privacy');
+})->name('privacy');
+
+Route::get('/terms', function () {
+    return Inertia::render('Public/Terms');
+})->name('terms');
+
+Route::get('/cookies', function () {
+    return Inertia::render('Public/Cookies');
+})->name('cookies');
+
+/*
+|--------------------------------------------------------------------------
+| Legacy URL redirects (301 permanent)
+|--------------------------------------------------------------------------
+| Old marketing URLs are permanently redirected so inbound links,
+| bookmarks, and search rankings keep working.
+*/
+
+Route::redirect('/company', '/', 301);
+Route::redirect('/insights', '/', 301);
+Route::redirect('/careers', '/', 301);
+Route::redirect('/case-study', '/', 301);
+Route::get('/case-study/{slug}', fn () => redirect('/', 301));
+Route::redirect('/services/custom-software', '/', 301);
+Route::redirect('/services/web-applications', '/', 301);
+Route::redirect('/services/mobile-apps', '/', 301);
+Route::redirect('/services/ai-ml', '/', 301);
+Route::redirect('/services/cloud-solutions', '/', 301);
+Route::redirect('/privacy-policy', '/privacy', 301);
+Route::redirect('/terms-of-service', '/terms', 301);
+Route::redirect('/cookie-policy', '/cookies', 301);
 
 Route::post('/order/create', function (\Illuminate\Http\Request $request) {
     if (!auth()->check()) {
