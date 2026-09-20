@@ -126,18 +126,24 @@ PEM;
             ->assertJson([
                 'status' => 'success',
                 'data' => [
-                    'license_status' => 'active',
+                    'status' => 'active',
                 ],
             ])
             ->assertJsonStructure([
+                'success',
                 'status',
                 'data' => [
-                    'license_status',
+                    'status',
+                    'license_id',
+                    'product_code',
+                    'license_type',
+                    'expires_at',
+                    'features',
                     'issued_at',
                     'offline_valid_until',
+                    'is_grace_period',
                 ],
-                'payload',
-                'server_signature',
+                'signature',
                 'key_id',
                 'algorithm',
             ]);
@@ -272,18 +278,18 @@ PEM;
             ->assertJson([
                 'status' => 'success',
                 'data' => [
-                    'license_status' => 'SUSPENDED',
+                    'status' => 'suspended',
                 ],
             ])
             ->assertJsonStructure([
                 'status',
                 'data' => [
-                    'license_status',
+                    'status',
                     'issued_at',
                 ],
             ]);
 
-        $this->assertArrayNotHasKey('offline_valid_until', $response->json('data'));
+        $this->assertNull($response->json('data.offline_valid_until'));
     }
 
     public function test_pulse_rejects_revoked_license_with_403(): void
@@ -342,7 +348,7 @@ PEM;
             ->assertJson([
                 'status' => 'success',
                 'data' => [
-                    'license_status' => 'active',
+                    'status' => 'active',
                     'is_grace_period' => true,
                 ],
             ]);
@@ -422,12 +428,11 @@ PEM;
 
         $this->assertEquals(7, $issuedAt->diffInDays($offlineValidUntil));
 
-        $payloadJson = base64_decode($response->json('payload'));
-        $this->assertNotEmpty($payloadJson);
+        $payloadJson = \App\Support\OfflineLicenseVerification::canonicalizePayload($response->json('data'));
 
         $verified = OfflineLicenseVerification::verifySignature(
             $payloadJson,
-            $response->json('server_signature'),
+            $response->json('signature'),
             $response->json('key_id')
         );
 
@@ -518,7 +523,7 @@ PEM;
         ]);
 
         $responseStandard->assertStatus(200)
-            ->assertJsonPath('data.license_status', 'active');
+            ->assertJsonPath('data.status', 'active');
 
         // Pulse must NOT persist fingerprint_missing_grace (persistGrace=false)
         $this->assertFalse((bool) $standardLicense->fresh()->fingerprint_missing_grace);
