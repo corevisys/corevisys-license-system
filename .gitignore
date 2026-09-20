@@ -29,6 +29,7 @@
 /trial_report.txt
 /user_bulk_import_template.csv
 /*.rar
+/*.zip
 /*_backup.*
 Homestead.json
 Homestead.yaml
