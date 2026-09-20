@@ -77,4 +77,31 @@ class License extends Model
     {
         return $this->belongsTo(Team::class);
     }
+
+    /**
+     * Determine whether the license is "running" (client is actively checking in).
+     *
+     * A license is considered running when its last heartbeat (`last_check_at`)
+     * falls within the allowed window:
+     *   pulse_interval_days (how often the client is expected to call /pulse)
+     *   + pulse_grace_days  (tolerance for late check-ins)
+     *
+     * Both values come from config/license.php, which reads OFFLINE_VALIDITY_DAYS,
+     * LICENSE_PULSE_INTERVAL_DAYS, and LICENSE_PULSE_GRACE_DAYS from .env.
+     *
+     * A license that has NEVER sent a pulse (last_check_at is null) is NOT running.
+     *
+     * @return bool
+     */
+    public function isRunning(): bool
+    {
+        if (!$this->last_check_at) {
+            return false;
+        }
+
+        $windowDays = (int) config('license.pulse_interval_days', 30)
+                    + (int) config('license.pulse_grace_days', 7);
+
+        return $this->last_check_at->gte(now()->subDays($windowDays));
+    }
 }

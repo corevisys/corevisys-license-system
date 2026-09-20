@@ -53,7 +53,10 @@ class AppServiceProvider extends ServiceProvider
 
         // Rate Limiters
         \Illuminate\Support\Facades\RateLimiter::for('pulse', function (\Illuminate\Http\Request $request) {
-            return \Illuminate\Cache\RateLimiting\Limit::perMinute(60)->by($request->ip());
+            $licenseKey = (string) $request->input('license_key', '');
+            $key = $licenseKey !== '' ? hash('sha256', $licenseKey . '|' . $request->ip()) : $request->ip();
+
+            return \Illuminate\Cache\RateLimiting\Limit::perHour(5)->by($key);
         });
 
         \Illuminate\Support\Facades\RateLimiter::for('activation', function (\Illuminate\Http\Request $request) {

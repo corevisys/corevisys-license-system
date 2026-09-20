@@ -327,7 +327,7 @@ class LicenseService
             // For now, if it's an existing binding, it's fine.
         }
 
-        if (!$this->validateFingerprintBinding($license, $fingerprint)) {
+        if (!$this->validateFingerprintBinding($license, $fingerprint, $enforcementMode, true)) {
             $this->logActivation($license, $domain, $ip, 'failed', 'Environment Fingerprint Mismatch');
             return ['status' => false, 'message' => 'Environment Fingerprint Mismatch'];
         }
@@ -384,24 +384,34 @@ class LicenseService
         ]);
     }
 
-    public function validateFingerprintBinding(License $license, ?string $fingerprint): bool
+    public function validateFingerprintBinding(License $license, ?string $fingerprint, ?string $enforcementMode = null, bool $persistGrace = true): bool
     {
         if ($license->bound_fingerprint === null) {
             return true;
         }
 
         if ($fingerprint !== null && !hash_equals($license->bound_fingerprint, $fingerprint)) {
-            $license->update(['fingerprint_missing_grace' => false]);
+            if ($persistGrace) {
+                $license->update(['fingerprint_missing_grace' => false]);
+            }
             return false;
         }
 
         if ($fingerprint === null) {
+            if (!$this->shouldEnforceFingerprint($enforcementMode)) {
+                return true;
+            }
+
             $allowsMissing = $this->fingerprintGraceWindowIsActive();
-            $license->update(['fingerprint_missing_grace' => $allowsMissing]);
+            if ($persistGrace) {
+                $license->update(['fingerprint_missing_grace' => $allowsMissing]);
+            }
             return $allowsMissing;
         }
 
-        $license->update(['fingerprint_missing_grace' => false]);
+        if ($persistGrace) {
+            $license->update(['fingerprint_missing_grace' => false]);
+        }
         return true;
     }
 
@@ -412,7 +422,7 @@ class LicenseService
         return in_array($normalizedMode, ['strict', 'active'], true);
     }
 
-    protected function fingerprintGraceWindowIsActive(): bool
+    public function fingerprintGraceWindowIsActive(): bool
     {
         if (!(bool) config('services.license.fingerprint_grace_mode', true)) {
             return false;

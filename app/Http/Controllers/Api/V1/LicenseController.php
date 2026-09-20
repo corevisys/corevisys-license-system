@@ -42,8 +42,8 @@ class LicenseController extends Controller
             'type' => $result['license']->type,
             'license_type' => $result['license']->type,
             'expires_at' => $result['license']->expires_at ? $result['license']->expires_at->toIso8601String() : null,
-            'offline_valid_until' => now()->addHours(24)->toIso8601String(),
             'issued_at' => now()->toIso8601String(),
+            'offline_valid_until' => now()->addDays((int) config('license.offline_validity_days', 7))->toIso8601String(),
         ]);
     }
 
@@ -72,8 +72,9 @@ class LicenseController extends Controller
         }
 
         $requestFingerprint = $request->filled('fingerprint') ? $request->string('fingerprint')->toString() : null;
+        $enforcementMode = $request->input('enforcement_mode');
 
-        if (!$this->licenseService->validateFingerprintBinding($license, $requestFingerprint)) {
+        if (!$this->licenseService->validateFingerprintBinding($license, $requestFingerprint, $enforcementMode, false)) {
             return response()->json(['status' => false, 'message' => 'Environment Fingerprint Required or Mismatched'], 403);
         }
 
@@ -97,6 +98,8 @@ class LicenseController extends Controller
             'license_type' => $license->type,
             'expires_at' => $license->expires_at ? $license->expires_at->toIso8601String() : null,
             'is_grace_period' => (bool) ($license->expires_at && $license->expires_at->isPast()),
+            'issued_at' => now()->toIso8601String(),
+            'offline_valid_until' => now()->addDays((int) config('license.offline_validity_days', 7))->toIso8601String(),
         ]);
     }
 
@@ -120,8 +123,9 @@ class LicenseController extends Controller
         }
 
         $requestFingerprint = $request->filled('fingerprint') ? $request->string('fingerprint')->toString() : null;
+        $enforcementMode = $request->input('enforcement_mode');
 
-        if (!$this->licenseService->validateFingerprintBinding($license, $requestFingerprint)) {
+        if (!$this->licenseService->validateFingerprintBinding($license, $requestFingerprint, $enforcementMode, false)) {
             return response()->json(['status' => false, 'message' => 'Environment Fingerprint Required or Mismatched'], 403);
         }
 
@@ -152,6 +156,8 @@ class LicenseController extends Controller
                 'license_type' => $license->type,
                 'expires_at' => $license->expires_at ? $license->expires_at->toIso8601String() : null,
                 'is_grace_period' => (bool) ($license->expires_at && $license->expires_at->isPast()),
+                'issued_at' => now()->toIso8601String(),
+                // No offline_valid_until — suspended licenses must not receive an offline grant
             ]);
         }
 
@@ -174,6 +180,8 @@ class LicenseController extends Controller
             'license_type' => $license->type,
             'expires_at' => $license->expires_at ? $license->expires_at->toIso8601String() : null,
             'is_grace_period' => (bool) ($license->expires_at && $license->expires_at->isPast()),
+            'issued_at' => now()->toIso8601String(),
+            'offline_valid_until' => now()->addDays((int) config('license.offline_validity_days', 7))->toIso8601String(),
         ]);
     }
 
@@ -227,16 +235,7 @@ class LicenseController extends Controller
 
     protected function fingerprintGraceWindowIsActive(): bool
     {
-        if (!(bool) config('services.license.fingerprint_grace_mode', true)) {
-            return false;
-        }
-
-        $storedDeadline = \App\Models\SystemSetting::where('key', 'fingerprint_enforcement_deadline')->value('value');
-        $deadline = $storedDeadline
-            ? \Carbon\Carbon::parse($storedDeadline)
-            : \Carbon\Carbon::parse(config('services.license.fingerprint_enforcement_deadline', now()->addDays(90)->format('Y-m-d')));
-
-        return now()->lt($deadline);
+        return $this->licenseService->fingerprintGraceWindowIsActive();
     }
 
     protected function normalizeDomain(?string $domain): ?string

@@ -6,9 +6,9 @@ defineProps({
 </script>
 
 <template>
-    <div class="overflow-x-auto rounded-[10px] border border-panel-line">
+    <div class="overflow-x-auto rounded-2xl border border-panel-line">
         <table class="w-full min-w-[620px] border-collapse text-left text-[13.5px]">
-            <thead>
+            <thead class="sticky top-16 z-10">
                 <tr class="bg-panel-2">
                     <th
                         v-for="column in columns"
@@ -19,7 +19,7 @@ defineProps({
                 </tr>
             </thead>
             <tbody>
-                <tr v-for="(row, index) in rows" :key="index" class="odd:bg-panel-2/40">
+                <tr v-for="(row, index) in rows" :key="index" class="odd:bg-panel-2">
                     <th
                         scope="row"
                         class="border-b border-panel-line px-4 py-3 text-left font-medium text-text-primary"
@@ -27,7 +27,7 @@ defineProps({
                     <td
                         v-for="column in columns.slice(1)"
                         :key="column.key"
-                        class="border-b border-panel-line px-4 py-3 text-text-secondary"
+                        class="border-b border-panel-line px-4 py-3 text-text-primary"
                     >{{ row[column.key] }}</td>
                 </tr>
             </tbody>
