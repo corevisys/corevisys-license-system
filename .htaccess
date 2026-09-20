@@ -1,5 +1,28 @@
 <IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
     RewriteEngine On
+
+    # Block direct access to sensitive files
+    RewriteRule ^\.env.* - [F,L,NC]
+    RewriteRule ^(artisan|composer\.(json|lock)|package(-lock)?\.json|phpunit\.xml|vite\.config\.js|cpanel_database\.sql)$ - [F,L,NC]
+    RewriteRule ^(\.git|\.github) - [F,L,NC]
+
+    # Handle Authorization Header for API tokens
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Redirect Trailing Slashes If Not A Folder...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Redirect all requests to public folder
     RewriteCond %{REQUEST_URI} !^/public/
     RewriteRule ^(.*)$ public/$1 [L]
 </IfModule>
+
+# Disable Directory Browsing
+Options -Indexes

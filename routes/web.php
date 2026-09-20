@@ -13,7 +13,19 @@ use Inertia\Inertia;
 | and never touch business logic, services, payments, or license state.
 */
 
+// cPanel 1-Click Setup & Migration Wizard
+Route::get('/cpanel-setup', [\App\Http\Controllers\CPanelSetupController::class, 'index'])->name('cpanel.setup');
+Route::post('/cpanel-setup', [\App\Http\Controllers\CPanelSetupController::class, 'runSetup'])->name('cpanel.setup.run');
+
 Route::get('/', function () {
+    try {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('products')) {
+            return redirect()->route('cpanel.setup');
+        }
+    } catch (\Throwable $e) {
+        return redirect()->route('cpanel.setup');
+    }
+
     return Inertia::render('Public/Home', [
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register'),

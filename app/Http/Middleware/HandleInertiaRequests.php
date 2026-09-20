@@ -29,13 +29,20 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $defaultTheme = 'terminal';
+        try {
+            $defaultTheme = \App\Models\SystemSetting::where('key', 'default_theme')->value('value') ?? 'terminal';
+        } catch (\Throwable $e) {
+            // Database not connected or table does not exist yet
+        }
+
         return [
             ...parent::share($request),
             'auth' => [
                 'user' => $request->user(),
             ],
             'settings' => [
-                'default_theme' => \App\Models\SystemSetting::where('key', 'default_theme')->value('value') ?? 'terminal',
+                'default_theme' => $defaultTheme,
             ],
         ];
     }
