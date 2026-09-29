@@ -3,13 +3,46 @@ import Badge from '@/Components/UI/Badge.vue';
 import Button from '@/Components/UI/Button.vue';
 import Card from '@/Components/UI/Card.vue';
 import TerminalBlock from '@/Components/UI/TerminalBlock.vue';
+import Alert from '@/Components/UI/Alert.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
+import axios from 'axios';
+import { onMounted, ref } from 'vue';
 
 const props = defineProps({
     license: Object,
     api_base_url: String,
 });
+
+const licenseKey = ref('');
+const keyLoading = ref(true);
+const keyMessage = ref('');
+const keyMessageIsError = ref(false);
+
+const loadLicenseKey = async () => {
+    keyLoading.value = true;
+    keyMessage.value = '';
+    keyMessageIsError.value = false;
+
+    try {
+        const response = await axios.post(route('licenses.reveal', props.license.id));
+        const key = response.data?.license_key;
+
+        if (typeof key !== 'string' || key.trim() === '') {
+            throw new Error('License key unavailable. Contact support to request a reissue.');
+        }
+
+        licenseKey.value = key;
+    } catch (error) {
+        licenseKey.value = '';
+        keyMessageIsError.value = true;
+        keyMessage.value = error.response?.data?.message ?? error.message ?? 'Unable to retrieve the license key. Try again later.';
+    } finally {
+        keyLoading.value = false;
+    }
+};
+
+onMounted(loadLicenseKey);
 
 const statusVariant = (status) => {
     const value = String(status || '').toLowerCase();
@@ -24,9 +57,23 @@ const statusVariant = (status) => {
     return mapping[value] ?? 'default';
 };
 
-const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    alert('Copied to clipboard!');
+const copyToClipboard = async () => {
+    keyMessage.value = '';
+    keyMessageIsError.value = false;
+
+    if (!licenseKey.value) {
+        keyMessageIsError.value = true;
+        keyMessage.value = 'License key is unavailable and cannot be copied.';
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(licenseKey.value);
+        keyMessage.value = 'License key copied to clipboard.';
+    } catch {
+        keyMessageIsError.value = true;
+        keyMessage.value = 'Unable to copy the license key. Check your browser clipboard permissions.';
+    }
 };
 </script>
 
@@ -35,6 +82,10 @@ const copyToClipboard = (text) => {
 
     <AuthenticatedLayout>
         <div class="mx-auto max-w-5xl py-12">
+            <Alert v-if="keyMessage" :variant="keyMessageIsError ? 'danger' : 'success'" class="mb-6">
+                {{ keyMessage }}
+            </Alert>
+
             <div class="mb-12 flex items-center justify-between gap-4">
                 <div>
                     <div class="mb-3 flex items-center gap-4">
@@ -60,10 +111,10 @@ const copyToClipboard = (text) => {
                             <div>
                                 <label class="mb-2 block text-[10px] font-black uppercase tracking-[0.24em] text-text-muted">Your license key</label>
                                 <div class="flex items-center gap-3">
-                                    <TerminalBlock class="flex-1 break-all px-4 py-3">
-                                        {{ license.license_key }}
+                                    <TerminalBlock class="min-w-0 flex-1 break-all px-4 py-3">
+                                        {{ licenseKey || (keyLoading ? 'Loading license key...' : 'License key unavailable') }}
                                     </TerminalBlock>
-                                    <Button type="button" variant="secondary" @click="copyToClipboard(license.license_key)">Copy</Button>
+                                    <Button type="button" variant="secondary" :disabled="keyLoading || !licenseKey" @click="copyToClipboard">Copy</Button>
                                 </div>
                             </div>
 
@@ -94,13 +145,14 @@ const copyToClipboard = (text) => {
                                 <div>
                                     <h4 class="mb-2 text-sm font-black uppercase tracking-[0.2em] text-text-primary">Payload requirements</h4>
                                     <p class="mb-4 text-sm leading-relaxed text-text-muted">Include the following JSON payload in your request header:</p>
-                                    <TerminalBlock class="whitespace-pre-wrap">
+                                                                        <TerminalBlock v-if="licenseKey" class="whitespace-pre-wrap break-all">
                                         {
-                                          "license_key": "{{ license.license_key }}",
+                                                                                    "license_key": "{{ licenseKey }}",
                                           "domain": "yourdomain.com",
                                           "ip_address": "8.8.8.8"
                                         }
                                     </TerminalBlock>
+                                                                        <p v-else class="text-sm text-text-muted">{{ keyLoading ? 'Loading license key...' : 'License key unavailable.' }}</p>
                                 </div>
                             </div>
 
