@@ -91,7 +91,7 @@ const getStatusColor = (status) => {
                         <div class="space-y-6">
                             <div>
                                 <label class="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">License key</label>
-                                <code class="block break-all rounded-2xl border border-panel-line bg-panel-2 px-4 py-3 font-mono text-sm text-teal">{{ license.license_key }}</code>
+                                <code class="block min-w-0 whitespace-normal break-all rounded-2xl border border-panel-line bg-panel-2 px-4 py-3 font-mono text-sm text-teal">{{ license.license_key || 'License key unavailable. Contact support for a reissue.' }}</code>
                             </div>
                             <div>
                                 <label class="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Valid until</label>

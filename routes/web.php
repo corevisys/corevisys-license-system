@@ -765,7 +765,17 @@ Route::middleware('auth')->group(function () {
                     'user_name' => $license->user->name,
                     'user_email' => $license->user->email,
                     'product_name' => $license->product->name,
-                    'license_key' => $license->license_key_hash ? 'XXXX-XXXX-' . substr($license->license_key_hash, -4) : 'Contact Admin for Key',
+                    'license_key' => (function () use ($license) {
+                        try {
+                            return $license->key_encrypted ?: null;
+                        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+                            \Illuminate\Support\Facades\Log::warning('Unable to decrypt stored license key for admin details', [
+                                'license_id' => $license->id,
+                            ]);
+
+                            return null;
+                        }
+                    })(),
                     'type' => ucfirst($license->type),
                     'status' => $license->status,
                     'enforcement_mode' => $license->enforcement_mode ?? 'active',

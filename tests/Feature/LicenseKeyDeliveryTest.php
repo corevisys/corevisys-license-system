@@ -9,6 +9,7 @@ use App\Services\LicenseService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class LicenseKeyDeliveryTest extends TestCase
@@ -47,6 +48,113 @@ class LicenseKeyDeliveryTest extends TestCase
         $this->actingAs($otherUser)
             ->postJson(route('licenses.reveal', $license->id))
             ->assertNotFound();
+    }
+
+    public function test_license_configuration_loads_the_key_through_the_owner_scoped_reveal_endpoint(): void
+    {
+        [$user, $license] = $this->createIssuedLicense();
+        $key = $license->raw_key;
+
+        $this->actingAs($user)
+            ->get(route('licenses.config', $license->id))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('LicenseConfig')
+                ->where('license.id', $license->id)
+                ->missing('license.license_key'))
+            ->assertDontSee($key);
+
+        $this->actingAs($user)
+            ->postJson(route('licenses.reveal', $license->id))
+            ->assertOk()
+            ->assertJsonPath('license_key', $key);
+    }
+
+    public function test_customer_reveal_returns_the_exact_long_license_key(): void
+    {
+        [$user, $license] = $this->createIssuedLicense();
+        $key = str_repeat('LONG-CUSTOMER-LICENSE-', 30);
+        $license->key_encrypted = $key;
+        $license->license_key_hash = hash('sha256', $key . $license->secret_salt);
+        $license->save();
+
+        $this->actingAs($user)
+            ->postJson(route('licenses.reveal', $license->id))
+            ->assertOk()
+            ->assertJsonPath('license_key', $key);
+    }
+
+    public function test_another_user_cannot_open_license_configuration(): void
+    {
+        [, $license] = $this->createIssuedLicense();
+        $otherUser = User::factory()->create();
+
+        $this->actingAs($otherUser)
+            ->get(route('licenses.config', $license->id))
+            ->assertForbidden();
+    }
+
+    public function test_admin_license_details_returns_the_complete_key_only_to_admins(): void
+    {
+        [, $license] = $this->createIssuedLicense();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $key = $license->raw_key;
+
+        $this->actingAs($admin)
+            ->get(route('admin.licenses.show', $license->id))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Admin/LicenseDetails')
+                ->where('license.license_key', $key));
+    }
+
+    public function test_admin_license_details_supports_long_keys_and_missing_keys(): void
+    {
+        [, $license] = $this->createIssuedLicense();
+        $admin = User::factory()->create(['role' => 'admin']);
+        $key = str_repeat('LONG-LICENSE-KEY-', 30);
+        $license->key_encrypted = $key;
+        $license->license_key_hash = hash('sha256', $key . $license->secret_salt);
+        $license->save();
+
+        $this->actingAs($admin)
+            ->get(route('admin.licenses.show', $license->id))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('license.license_key', $key));
+
+        DB::table('licenses')->where('id', $license->id)->update(['key_encrypted' => null]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.licenses.show', $license->id))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('license.license_key', null));
+    }
+
+    public function test_admin_license_details_handles_corrupt_encrypted_key_without_exposing_ciphertext(): void
+    {
+        [, $license] = $this->createIssuedLicense();
+        $admin = User::factory()->create(['role' => 'admin']);
+        DB::table('licenses')->where('id', $license->id)->update(['key_encrypted' => 'corrupt-ciphertext']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.licenses.show', $license->id))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('license.license_key', null))
+            ->assertDontSee('corrupt-ciphertext')
+            ->assertDontSee('DecryptException');
+    }
+
+    public function test_non_admin_cannot_view_admin_license_details(): void
+    {
+        [, $license] = $this->createIssuedLicense();
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get(route('admin.licenses.show', $license->id))
+            ->assertForbidden();
     }
 
     public function test_legacy_license_without_encrypted_key_reports_unavailable(): void
