@@ -2,6 +2,7 @@
 import Badge from '@/Components/UI/Badge.vue';
 import Button from '@/Components/UI/Button.vue';
 import Card from '@/Components/UI/Card.vue';
+import Alert from '@/Components/UI/Alert.vue';
 import Modal from '@/Components/Modal.vue';
 import Table from '@/Components/UI/Table.vue';
 import TableCell from '@/Components/UI/TableCell.vue';
@@ -11,6 +12,8 @@ import TableRow from '@/Components/UI/TableRow.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
 import { onMounted, onUnmounted, ref } from 'vue';
+import axios from 'axios';
+import { Copy, LoaderCircle } from 'lucide-vue-next';
 
 const props = defineProps({
     licenses: {
@@ -24,10 +27,25 @@ const props = defineProps({
     },
 });
 
-const copyKey = (key) => {
-    if (!key) return;
-    navigator.clipboard.writeText(key);
-    alert('License key copied to clipboard!');
+const keyMessage = ref('');
+const keyMessageIsError = ref(false);
+const revealingLicenseId = ref(null);
+
+const copyKey = async (license) => {
+    keyMessage.value = '';
+    keyMessageIsError.value = false;
+    revealingLicenseId.value = license.id;
+
+    try {
+        const response = await axios.post(route('licenses.reveal', license.id));
+        await navigator.clipboard.writeText(response.data.license_key);
+        keyMessage.value = 'License key copied to clipboard.';
+    } catch (error) {
+        keyMessageIsError.value = true;
+        keyMessage.value = error.response?.data?.message ?? 'Unable to retrieve the license key. Try again later.';
+    } finally {
+        revealingLicenseId.value = null;
+    }
 };
 
 const managingLicense = ref(null);
@@ -92,6 +110,10 @@ onUnmounted(() => {
             <Button type="button" variant="primary" @click="router.get(route('store'))">New license</Button>
         </div>
 
+        <Alert v-if="keyMessage" :variant="keyMessageIsError ? 'danger' : 'success'" class="mb-6">
+            {{ keyMessage }}
+        </Alert>
+
         <Card class="overflow-hidden p-0">
             <div v-if="loading" class="space-y-4 p-6">
                 <div v-for="i in 5" :key="i" class="grid grid-cols-6 gap-4 animate-pulse">
@@ -131,7 +153,9 @@ onUnmounted(() => {
                                     <code class="rounded-xl border border-panel-line bg-panel-2 px-3 py-1.5 font-mono text-sm text-teal">
                                         {{ license.key_preview }}
                                     </code>
-                                    <button @click="copyKey(license.full_key)" class="rounded-xl border border-panel-line p-2 text-text-muted transition hover:border-amber hover:text-amber" title="Secure copy">
+                                    <button type="button" :disabled="revealingLicenseId === license.id" @click="copyKey(license)" class="rounded-xl border border-panel-line p-2 text-text-muted transition hover:border-amber hover:text-amber disabled:cursor-wait disabled:opacity-60 [&>svg:last-child]:hidden" title="Reveal and copy license key">
+                                        <LoaderCircle v-if="revealingLicenseId === license.id" class="h-4 w-4 animate-spin" />
+                                        <Copy v-else class="h-4 w-4" />
                                         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
                                     </button>
                                 </div>

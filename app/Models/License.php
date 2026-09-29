@@ -18,6 +18,7 @@ class License extends Model
         'product_id',
         'order_id',
         'license_key_hash',
+        'key_encrypted',
         'secret_salt',
         'status',
         'reset_count',
@@ -38,7 +39,12 @@ class License extends Model
         'team_id',
     ];
 
+    protected $hidden = [
+        'key_encrypted',
+    ];
+
     protected $casts = [
+        'key_encrypted' => 'encrypted',
         'activated_at' => 'datetime',
         'expires_at' => 'datetime',
         'grace_expires_at' => 'datetime',

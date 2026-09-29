@@ -193,6 +193,7 @@ class LicenseService
             'product_id' => $product->id,
             'order_id' => $order->id,
             'license_key_hash' => $keyHash,
+            'key_encrypted' => $keyPayload,
             'secret_salt' => $salt,
             'type' => $type,
             'status' => 'inactive',

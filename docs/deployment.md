@@ -13,6 +13,7 @@
 
 ## Secret rotation and scanning
 
+- `licenses.key_encrypted` is encrypted with Laravel's `APP_KEY`. Laravel 12 supports `APP_PREVIOUS_KEYS` for decrypting values encrypted with prior keys. When rotating `APP_KEY`, set `APP_PREVIOUS_KEYS` to the old key and retain it until the stored license keys have been re-encrypted. This project does not currently provide a re-encryption command, so do not remove the previous key before a separate re-encryption procedure is completed.
 - Rotate `APP_KEY`, signing keys, gateway secrets, and database credentials on a documented schedule.
 - Keep old public signing keys available for a short overlap period while clients refresh cached keys.
 - Run a repository secret scan on every release with `gitleaks`, `trufflehog`, or an equivalent tool.

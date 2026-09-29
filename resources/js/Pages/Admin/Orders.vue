@@ -2,6 +2,7 @@
 import Badge from '@/Components/UI/Badge.vue';
 import Button from '@/Components/UI/Button.vue';
 import Card from '@/Components/UI/Card.vue';
+import Alert from '@/Components/UI/Alert.vue';
 import Table from '@/Components/UI/Table.vue';
 import TableCell from '@/Components/UI/TableCell.vue';
 import TableHead from '@/Components/UI/TableHead.vue';
@@ -54,6 +55,10 @@ const getStatusColor = (status) => {
     <Head title="Order Management" />
 
     <AuthenticatedLayout>
+        <Alert v-if="$page.props.errors?.fulfillment" variant="danger" class="mb-6">
+            {{ $page.props.errors.fulfillment }}
+        </Alert>
+
         <div class="mb-12 flex items-center justify-between gap-4">
             <div>
                 <Badge status="success" class="!rounded-full px-3 py-1.5">Order queue</Badge>
