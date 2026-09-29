@@ -368,6 +368,36 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('Licenses', ['licenses' => $licenses]);
     })->name('licenses');
 
+    Route::post('/licenses/{id}/reveal', function ($id) {
+        $license = \App\Models\License::where('user_id', auth()->id())->findOrFail($id);
+
+        try {
+            $key = $license->key_encrypted;
+        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+            \Illuminate\Support\Facades\Log::warning('Unable to decrypt stored license key', [
+                'license_id' => $license->id,
+                'user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'message' => 'License key unavailable. Contact support to request a reissue.',
+            ], 404);
+        }
+
+        if (!$key) {
+            return response()->json([
+                'message' => 'License key unavailable. Contact support to request a reissue.',
+            ], 404);
+        }
+
+        \Illuminate\Support\Facades\Log::info('License key revealed', [
+            'license_id' => $license->id,
+            'user_id' => auth()->id(),
+        ]);
+
+        return response()->json(['license_key' => $key]);
+    })->middleware('throttle:5,1')->name('licenses.reveal');
+
     Route::get('/licenses/{id}/config', function ($id) {
         $license = \App\Models\License::with('product')->findOrFail($id);
         
@@ -668,18 +698,26 @@ Route::middleware('auth')->group(function () {
         })->name('admin.orders');
 
         Route::post('/orders/{id}/verify', function ($id) {
-            $order = \App\Models\Order::findOrFail($id);
-            if ($order->status === 'pending') {
-                $order->update(['status' => 'completed']);
-                
-                // Update payment status as well
-                if ($order->payment) {
-                    $order->payment->update(['status' => 'verified', 'verified_by' => auth()->id()]);
+            $order = \App\Models\Order::with('payment')->findOrFail($id);
+
+            try {
+                if (!$order->payment) {
+                    throw new \RuntimeException('Order has no payment record.');
                 }
 
-                // Activate licenses associated with this order
-                // ... (Logic to activate licenses would go here, assuming License model linking)
+                app(\App\Services\OrderFulfillmentService::class)->fulfillOrder($order, [
+                    'verified_by' => auth()->id(),
+                ]);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Admin order fulfillment failed', [
+                    'order_id' => $order->id,
+                    'exception' => get_class($e),
+                ]);
+
+                $message = 'Could not confirm this order. Please review it and try again.';
+                return back()->with('error', $message)->withErrors(['fulfillment' => $message]);
             }
+
             return back()->with('success', 'Order verified successfully.');
         })->name('admin.orders.verify');
 

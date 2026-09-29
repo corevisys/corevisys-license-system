@@ -23,8 +23,19 @@ class OrderFulfillmentService
     public function fulfillOrder(Order $order, array $paymentData = [])
     {
         if ($order->status === OrderStatus::COMPLETED) {
-            Log::info("OrderFulfillment: Order {$order->order_number} already completed. Skipping.");
-            return;
+            $existingLicense = $order->licenses()->first();
+            if ($existingLicense) {
+                Log::info("OrderFulfillment: Order {$order->order_number} already completed. Skipping.");
+                return ['license' => $existingLicense, 'api_token' => null];
+            }
+
+            $item = $order->items()->with('product')->first();
+            if (!$item || !$item->product) {
+                Log::warning('OrderFulfillment: Completed order has no fulfillable item. Skipping repair.', [
+                    'order_id' => $order->id,
+                ]);
+                return null;
+            }
         }
 
         try {
@@ -51,6 +62,9 @@ class OrderFulfillmentService
                     }
                     if (!empty($paymentData['gateway_response'])) {
                         $paymentUpdates['gateway_response'] = $paymentData['gateway_response'];
+                    }
+                    if (array_key_exists('verified_by', $paymentData)) {
+                        $paymentUpdates['verified_by'] = $paymentData['verified_by'];
                     }
                     $order->payment->update($paymentUpdates);
                 }
