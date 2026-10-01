@@ -558,9 +558,11 @@ class LicenseService
         }
 
         $storedDeadline = \App\Models\SystemSetting::getCached('fingerprint_enforcement_deadline');
+        $configuredDeadline = config('services.license.fingerprint_enforcement_deadline');
+
         $deadline = $storedDeadline
             ? Carbon::parse($storedDeadline)
-            : Carbon::parse(config('services.license.fingerprint_enforcement_deadline', now()->addDays(90)->format('Y-m-d')));
+            : ($configuredDeadline ? Carbon::parse($configuredDeadline) : now()->addDays(90));
 
         return now()->lt($deadline);
     }

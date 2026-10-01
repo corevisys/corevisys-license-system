@@ -16,8 +16,8 @@ class SystemSettingsSeeder extends Seeder
         SystemSetting::firstOrCreate(['key' => 'api_enabled'], ['value' => 'true']);
         SystemSetting::firstOrCreate(['key' => 'min_supported_version'], ['value' => '1.0.0']);
         SystemSetting::firstOrCreate(['key' => 'default_theme'], ['value' => 'terminal']);
-        SystemSetting::firstOrCreate(['key' => 'fingerprint_enforcement_deadline'], ['value' => env('FINGERPRINT_ENFORCEMENT_DEADLINE', now()->addDays(90)->format('Y-m-d'))]);
-        SystemSetting::firstOrCreate(['key' => 'fingerprint_grace_mode'], ['value' => env('FINGERPRINT_GRACE_MODE', true)]);
+        SystemSetting::firstOrCreate(['key' => 'fingerprint_enforcement_deadline'], ['value' => config('services.license.fingerprint_enforcement_deadline') ?? now()->addDays(90)->format('Y-m-d')]);
+        SystemSetting::firstOrCreate(['key' => 'fingerprint_grace_mode'], ['value' => (string) config('services.license.fingerprint_grace_mode', 'true')]);
         
         // Payment Gateways (keep optional providers disabled until configured)
         SystemSetting::firstOrCreate(['key' => 'gateway_stripe_active'], ['value' => '0']);

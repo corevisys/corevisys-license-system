@@ -43,7 +43,7 @@ return [
         'signing_key_id' => env('LICENSE_SIGNING_KEY_ID', 'corevisys-key-1'),
         'rotation_overlap_days' => env('LICENSE_ROTATION_OVERLAP_DAYS', 30),
         'signing_revoked_key_ids' => env('LICENSE_SIGNING_REVOKED_KEY_IDS') ? array_filter(array_map('trim', explode(',', env('LICENSE_SIGNING_REVOKED_KEY_IDS')))) : [],
-        'fingerprint_enforcement_deadline' => env('FINGERPRINT_ENFORCEMENT_DEADLINE', now()->addDays(90)->format('Y-m-d')),
+        'fingerprint_enforcement_deadline' => env('FINGERPRINT_ENFORCEMENT_DEADLINE', null),
         'fingerprint_grace_mode' => env('FINGERPRINT_GRACE_MODE', true),
     ],
 
