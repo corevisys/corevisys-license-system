@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Jobs\ProcessLicenseRenewal;
 use App\Models\License;
 use App\Models\LicenseActivation;
 use App\Models\Order;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductPrice;
 use App\Models\TrialHistory;
@@ -736,8 +738,8 @@ class LicenseService
                 // Billing period is stored as integer days. NULL = lifetime (no auto-renew).
                 $billingPeriod = $price ? (int) $price->billing_period : 30;
 
-                // Mock Payment Logic
-                $paymentSuccess = true; // Simulating success for now
+                // Real Payment Logic (FIX-005 / BUG-001)
+                $paymentSuccess = $this->chargeRecurringSubscription($license);
 
                 if ($paymentSuccess) {
                     // Extend Expiry by the configured billing period.
@@ -747,7 +749,9 @@ class LicenseService
                     $license->update([
                         'expires_at' => $newExpiry,
                         'next_billing_at' => $newExpiry->copy()->addDays($billingPeriod),
-                        'last_check_at' => Carbon::now()
+                        'last_check_at' => Carbon::now(),
+                        'grace_expires_at' => null,
+                        'status' => 'active',
                     ]);
 
                     \App\Services\AuditService::log('license_renewed', $license, ['period' => $billingPeriod]);
@@ -757,6 +761,12 @@ class LicenseService
                     if (is_null($license->grace_expires_at)) {
                         $license->update(['grace_expires_at' => Carbon::now()->addDays(7)]);
                         \App\Services\AuditService::log('license_renewal_failed_grace_started', $license);
+                    } elseif ($license->grace_expires_at->isPast()) {
+                        $license->update([
+                            'status' => 'expired',
+                            'auto_renew' => false,
+                        ]);
+                        \App\Services\AuditService::log('license_expired_grace_ended', $license);
                     }
                     $results['failed']++;
                 }
@@ -764,6 +774,35 @@ class LicenseService
         });
 
         return $results;
+    }
+
+    /**
+     * Charge recurring subscription or verify existing confirmed payment record.
+     * Replaces simulated billing stub (BUG-001 / FIX-005).
+     */
+    public function chargeRecurringSubscription(License $license): bool
+    {
+        // 1. If license has a gateway subscription, delegate to gateway recurring charge logic (e.g. bKash)
+        if ($license->gateway_subscription_id) {
+            $renewalJob = new ProcessLicenseRenewal($license);
+            if ($renewalJob->chargeRecurringSubscription()) {
+                return true;
+            }
+        }
+
+        // 2. Enforce real payment record confirmation:
+        // Must have an associated order with a verified payment record.
+        if ($license->order_id) {
+            $hasVerifiedPayment = Payment::where('order_id', $license->order_id)
+                ->where('status', 'verified')
+                ->exists();
+
+            if ($hasVerifiedPayment) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

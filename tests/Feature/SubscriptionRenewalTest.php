@@ -34,6 +34,15 @@ class SubscriptionRenewalTest extends TestCase
             'status' => 'completed'
         ]);
 
+        Payment::create([
+            'order_id' => $order->id,
+            'user_id' => $user->id,
+            'gateway' => 'stripe',
+            'transaction_id' => 'in_sub_123',
+            'amount' => 10,
+            'status' => 'verified',
+        ]);
+
         $license = License::create([
             'user_id' => $user->id,
             'product_id' => $product->id,

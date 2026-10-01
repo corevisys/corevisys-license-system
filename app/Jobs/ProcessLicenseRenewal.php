@@ -88,7 +88,7 @@ class ProcessLicenseRenewal implements ShouldQueue
         }
     }
 
-    protected function chargeRecurringSubscription(): bool
+    public function chargeRecurringSubscription(): bool
     {
         $subscriptionId = $this->license->gateway_subscription_id;
 

@@ -479,6 +479,14 @@ class PerformanceRemediationTest extends TestCase
         for ($i = 0; $i < 10; $i++) {
             $prod  = ($i % 2 === 0) ? $product1 : $product2;
             $order = Order::factory()->create(['user_id' => $user->id]);
+            Payment::create([
+                'order_id'       => $order->id,
+                'user_id'        => $user->id,
+                'gateway'        => 'stripe',
+                'transaction_id' => "tx_perf_{$i}",
+                'amount'         => 75,
+                'status'         => 'verified',
+            ]);
 
             License::create([
                 'user_id'          => $user->id,

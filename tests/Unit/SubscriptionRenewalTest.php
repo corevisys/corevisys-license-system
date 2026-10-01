@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\License;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductPrice;
 use App\Services\LicenseService;
@@ -21,6 +22,15 @@ test('renewal logic uses billing period in days', function () {
         'status' => 'active',
         'next_billing_at' => now()->subDay(),
         'expires_at' => now()->subDay(),
+    ]);
+
+    Payment::create([
+        'order_id' => $license->order_id,
+        'user_id' => $license->user_id,
+        'gateway' => 'manual',
+        'transaction_id' => 'tx_unit_test',
+        'amount' => 100,
+        'status' => 'verified',
     ]);
 
     $service = new LicenseService();
