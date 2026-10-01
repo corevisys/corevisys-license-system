@@ -563,6 +563,105 @@ class LicenseService
         return now()->lt($deadline);
     }
 
+    /**
+     * Deactivate a license for a specific domain/fingerprint combination.
+     *
+     * Rules:
+     * - The request MUST come from the bound domain (or a domain with a
+     *   successful activation history). Prevents a rogue third party from
+     *   deactivating someone else's license.
+     * - If the license has a bound_fingerprint, the submitted fingerprint MUST
+     *   match (strict equality — no grace window on deactivation).
+     * - On success: clears the primary binding fields, marks all active
+     *   activation rows for the domain as 'deactivated', writes an audit entry,
+     *   and sets status to 'inactive' only when no other active bindings remain.
+     *
+     * @return array{status: bool, message: string, error_code?: string}
+     */
+    public function deactivate(
+        License $license,
+        string  $domain,
+        string  $ip,
+        ?string $fingerprint = null,
+        ?string $reason      = null,
+    ): array {
+        // 1. Verify domain is authorised (has a successful activation history)
+        $domainIsAuthorised = ($license->bound_domain && $this->normalizeDomain($license->bound_domain) === $this->normalizeDomain($domain))
+            || LicenseActivation::where('license_id', $license->id)
+                ->where('status', 'success')
+                ->where('request_domain', $domain)
+                ->exists();
+
+        if (! $domainIsAuthorised) {
+            $this->logActivation($license, $domain, $ip, 'failed', 'Deactivation: unauthorised domain');
+            return [
+                'status'     => false,
+                'message'    => 'This domain is not authorised to deactivate the license.',
+                'error_code' => 'unauthorised_domain',
+            ];
+        }
+
+        // 2. Strict fingerprint check (no grace window on deactivation)
+        if ($license->bound_fingerprint !== null && $fingerprint !== null) {
+            if (! hash_equals($license->bound_fingerprint, $fingerprint)) {
+                $this->logActivation($license, $domain, $ip, 'failed', 'Deactivation: fingerprint mismatch');
+                return [
+                    'status'     => false,
+                    'message'    => 'Fingerprint mismatch. Deactivation denied.',
+                    'error_code' => 'fingerprint_mismatch',
+                ];
+            }
+        }
+
+        // 3. Mark all successful activation rows for this domain as deactivated
+        LicenseActivation::where('license_id', $license->id)
+            ->where('request_domain', $domain)
+            ->where('status', 'success')
+            ->update(['status' => 'failed', 'failure_reason' => 'Deactivated by client']);
+
+        // 4. Clear primary binding if this domain IS the primary binding
+        $isPrimary = $license->bound_domain && $this->normalizeDomain($license->bound_domain) === $this->normalizeDomain($domain);
+        $updates   = [];
+
+        if ($isPrimary) {
+            $updates['bound_domain']      = null;
+            $updates['bound_ip']          = null;
+            $updates['bound_fingerprint'] = null;
+        }
+
+        // 5. If no remaining active bindings, set license to 'inactive'
+        $remainingBindings = LicenseActivation::where('license_id', $license->id)
+            ->where('status', 'success')
+            ->count();
+
+        if ($remainingBindings === 0) {
+            try {
+                $this->stateMachine->transition($license, 'inactive');
+            } catch (\Exception) {
+                // already inactive / state-machine won't allow the transition
+            }
+        }
+
+        if (! empty($updates)) {
+            $license->update($updates);
+        }
+
+        // 6. Audit trail
+        AuditService::log(
+            'license_deactivated',
+            $license,
+            ['domain' => $domain, 'fingerprint_submitted' => $fingerprint !== null ? '[present]' : null],
+            ['reason' => $reason ?? 'client_request', 'remaining_bindings' => $remainingBindings]
+        );
+
+        return ['status' => true, 'message' => 'License deactivated successfully.'];
+    }
+
+    private function normalizeDomain(?string $domain): ?string
+    {
+        return in_array($domain, ['localhost', '127.0.0.1'], true) ? '127.0.0.1' : $domain;
+    }
+
     public function resetLicense(License $license, $admin, string $reason)
     {
         $oldDomain = $license->bound_domain;

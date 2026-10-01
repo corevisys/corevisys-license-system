@@ -66,5 +66,11 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Support\Facades\RateLimiter::for('activation', function (\Illuminate\Http\Request $request) {
             return \Illuminate\Cache\RateLimiting\Limit::perMinute(5)->by($request->ip());
         });
+
+        // Deactivation is infrequent (uninstall/transfer) — 10 per hour per IP is generous
+        // but still prevents abuse (e.g. looping deactivations to exhaust activations).
+        \Illuminate\Support\Facades\RateLimiter::for('deactivation', function (\Illuminate\Http\Request $request) {
+            return \Illuminate\Cache\RateLimiting\Limit::perHour(10)->by($request->ip());
+        });
     }
 }

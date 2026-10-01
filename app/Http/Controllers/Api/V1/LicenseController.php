@@ -185,6 +185,69 @@ class LicenseController extends Controller
         return $this->successResponse($this->licensePayload($license));
     }
 
+    /**
+     * Deactivate a license for the requesting domain.
+     *
+     * POST /api/v1/license/deactivate
+     *
+     * Required: license_key, domain, ip
+     * Optional: fingerprint, product_code, reason
+     */
+    public function deactivate(Request $request)
+    {
+        $request->validate([
+            'license_key'  => 'required|string',
+            'domain'       => 'required|string',
+            'ip'           => 'required|ip',
+            'fingerprint'  => 'nullable|string|max:255',
+            'product_code' => 'nullable|string|max:100',
+            'reason'       => 'nullable|string|max:255',
+        ]);
+
+        $license = $this->licenseService->findByKey($request->license_key);
+
+        if (! $license) {
+            return response()->json(['status' => false, 'message' => 'Invalid License Key'], 404);
+        }
+
+        // Optional product-code guard (same as activate/check/pulse)
+        if ($request->filled('product_code')) {
+            $expectedSlug = $license->product?->slug;
+            if ($expectedSlug !== null && $expectedSlug !== $request->input('product_code')) {
+                return response()->json([
+                    'status'     => false,
+                    'message'    => 'License is not valid for product: ' . $request->input('product_code'),
+                    'error_code' => 'product_code_mismatch',
+                ], 422);
+            }
+        }
+
+        $result = $this->licenseService->deactivate(
+            $license,
+            $request->domain,
+            $request->input('ip'),
+            $request->input('fingerprint'),
+            $request->input('reason'),
+        );
+
+        if (! $result['status']) {
+            $httpStatus = match ($result['error_code'] ?? '') {
+                'product_code_mismatch' => 422,
+                'fingerprint_mismatch'  => 403,
+                'unauthorised_domain'   => 403,
+                default                 => 403,
+            };
+            return response()->json($result, $httpStatus);
+        }
+
+        return response()->json([
+            'success' => true,
+            'status'  => 'success',
+            'message' => $result['message'],
+            'data'    => [],
+        ]);
+    }
+
     public function publicKey()
     {
         // 1. Check cache first
