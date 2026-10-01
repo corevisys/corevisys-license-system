@@ -31,6 +31,12 @@
 /*.rar
 /*.zip
 /*_backup.*
+*.sql
+*.sqlite
+*.bak
+.rnd
+/storage/backup-drill/
+/storage/installed.lock
 Homestead.json
 Homestead.yaml
 Thumbs.db
