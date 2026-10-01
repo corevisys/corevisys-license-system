@@ -354,12 +354,23 @@ class LicenseService
         return $license;
     }
 
-    public function activate(string $key, string $domain, string $ip, ?string $fingerprint = null, ?string $enforcementMode = null)
+    public function activate(string $key, string $domain, string $ip, ?string $fingerprint = null, ?string $enforcementMode = null, ?string $productCode = null)
     {
         $license = $this->findByKey($key);
 
         if (!$license) {
             return ['status' => false, 'message' => 'Invalid License Key'];
+        }
+
+        if ($productCode !== null) {
+            $expectedSlug = $license->product?->slug;
+            if ($expectedSlug !== null && $expectedSlug !== $productCode) {
+                return [
+                    'status' => false,
+                    'message' => 'License is not valid for product: ' . $productCode,
+                    'error_code' => 'product_code_mismatch',
+                ];
+            }
         }
 
         if ($license->status === 'suspended') {

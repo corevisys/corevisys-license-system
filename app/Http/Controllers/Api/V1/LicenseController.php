@@ -25,6 +25,7 @@ class LicenseController extends Controller
             'domain' => 'required|string',
             'ip' => 'required|ip', // Client should send their server IP
             'fingerprint' => 'nullable|string|max:255',
+            'product_code' => 'nullable|string|max:100',
         ]);
 
         $result = $this->licenseService->activate(
@@ -32,11 +33,13 @@ class LicenseController extends Controller
             $request->domain,
             $request->input('ip') ?? $request->input('ip_address'),
             $request->input('fingerprint'),
-            $request->input('enforcement_mode')
+            $request->input('enforcement_mode'),
+            $request->input('product_code')
         );
 
         if (!$result['status']) {
-            return response()->json($result, 403);
+            $status = ($result['error_code'] ?? null) === 'product_code_mismatch' ? 422 : 403;
+            return response()->json($result, $status);
         }
 
         return $this->successResponse($this->licensePayload($result['license']));
@@ -53,6 +56,7 @@ class LicenseController extends Controller
             'domain' => 'required|string',
             'ip' => 'required|ip',
             'fingerprint' => 'nullable|string|max:255',
+            'product_code' => 'nullable|string|max:100',
             'enforcement_mode' => 'nullable|string|in:standard,strict,active',
         ]);
 
@@ -60,6 +64,17 @@ class LicenseController extends Controller
 
         if (!$license) {
             return response()->json(['status' => false, 'message' => 'Invalid License Key'], 403);
+        }
+
+        if ($request->filled('product_code')) {
+            $expectedSlug = $license->product?->slug;
+            if ($expectedSlug !== null && $expectedSlug !== $request->input('product_code')) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'License is not valid for product: ' . $request->input('product_code'),
+                    'error_code' => 'product_code_mismatch',
+                ], 422);
+            }
         }
 
         if ($license->status === 'suspended') {
@@ -100,6 +115,7 @@ class LicenseController extends Controller
             'license_key' => 'required|string',
             'domain' => 'required|string',
             'fingerprint' => 'nullable|string|max:255',
+            'product_code' => 'nullable|string|max:100',
             'enforcement_mode' => 'nullable|string|in:standard,strict,active',
         ]);
 
@@ -107,6 +123,17 @@ class LicenseController extends Controller
 
         if (!$license) {
             return response()->json(['status' => false, 'message' => 'License Inactive/Invalid'], 403);
+        }
+
+        if ($request->filled('product_code')) {
+            $expectedSlug = $license->product?->slug;
+            if ($expectedSlug !== null && $expectedSlug !== $request->input('product_code')) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'License is not valid for product: ' . $request->input('product_code'),
+                    'error_code' => 'product_code_mismatch',
+                ], 422);
+            }
         }
 
         $requestFingerprint = $request->filled('fingerprint') ? $request->string('fingerprint')->toString() : null;
