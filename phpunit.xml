@@ -33,5 +33,6 @@
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="LICENSE_PEPPER" value="test-license-pepper-secret-32-chars-long"/>
+        <env name="OPENSSL_CONF" value="C:\xampp\php\extras\openssl\openssl.cnf"/>
     </php>
 </phpunit>
