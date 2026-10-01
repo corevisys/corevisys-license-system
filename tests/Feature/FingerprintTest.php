@@ -222,4 +222,70 @@ class FingerprintTest extends TestCase
         $this->assertSame('Environment Fingerprint Mismatch', $result['message']);
         $this->assertFalse($license->fresh()->fingerprint_missing_grace);
     }
+
+    public function test_fingerprint_grace_window_does_not_roll_forward_when_deadline_is_null(): void
+    {
+        // Explicitly clear both config and database setting
+        config()->set('services.license.fingerprint_grace_mode', true);
+        config()->set('services.license.fingerprint_enforcement_deadline', null);
+        \App\Models\SystemSetting::where('key', 'fingerprint_enforcement_deadline')->delete();
+        \Illuminate\Support\Facades\Cache::forget('system_setting_fingerprint_enforcement_deadline');
+
+        $service = new LicenseService();
+
+        // Must NOT roll forward by adding 90 days; must evaluate to false (inactive grace window)
+        $this->assertFalse($service->fingerprintGraceWindowIsActive());
+
+        // Verify enforcement rejects missing fingerprint when strict mode is active and deadline is null
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $order = \App\Models\Order::create([
+            'order_number' => 'FP-NULL-DEADLINE',
+            'user_id' => $user->id,
+            'total_amount' => 10,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'FPKEY_NULL_DL' . 'salt-fpkey-null-dl'),
+            'secret_salt' => 'salt-fpkey-null-dl',
+            'type' => 'full',
+            'status' => 'active',
+            'bound_domain' => 'example.com',
+            'bound_ip' => '1.1.1.1',
+            'bound_fingerprint' => 'bound_hash',
+            'activated_at' => now(),
+            'fingerprint_missing_grace' => false,
+        ]);
+
+        $result = $service->activate('FPKEY_NULL_DL', 'example.com', '1.1.1.1', null, 'strict');
+        $this->assertFalse($result['status']);
+        $this->assertSame('Environment Fingerprint Mismatch', $result['message']);
+    }
+
+    public function test_fingerprint_grace_window_enforcement_is_cache_safe(): void
+    {
+        config()->set('services.license.fingerprint_grace_mode', true);
+        config()->set('services.license.fingerprint_enforcement_deadline', null);
+
+        // Set deadline in DB and cache
+        \App\Models\SystemSetting::updateOrCreate(
+            ['key' => 'fingerprint_enforcement_deadline'],
+            ['value' => now()->addDays(5)->format('Y-m-d')]
+        );
+
+        $service = new LicenseService();
+        $this->assertTrue($service->fingerprintGraceWindowIsActive());
+
+        // Update DB setting to an expired deadline and ensure cache updates
+        \App\Models\SystemSetting::updateOrCreate(
+            ['key' => 'fingerprint_enforcement_deadline'],
+            ['value' => now()->subDays(5)->format('Y-m-d')]
+        );
+        $this->assertFalse($service->fingerprintGraceWindowIsActive());
+    }
 }
