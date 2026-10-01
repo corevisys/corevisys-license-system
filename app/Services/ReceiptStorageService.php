@@ -50,28 +50,28 @@ class ReceiptStorageService
         $retentionDays = $days ?? (int) config('receipt.retention_days', 90);
         $cutoff = now()->subDays($retentionDays);
 
-        $payments = Payment::whereNotNull('payment_proof_path')
-            ->where('created_at', '<', $cutoff)
-            ->get();
-
         $disk = config('receipt.storage_disk', 'receipts');
         $deleted = 0;
 
-        foreach ($payments as $payment) {
-            try {
-                if ($payment->payment_proof_path) {
-                    Storage::disk($disk)->delete($payment->payment_proof_path);
-                }
+        Payment::whereNotNull('payment_proof_path')
+            ->where('created_at', '<', $cutoff)
+            ->chunkById(200, function ($payments) use ($disk, &$deleted) {
+                foreach ($payments as $payment) {
+                    try {
+                        if ($payment->payment_proof_path) {
+                            Storage::disk($disk)->delete($payment->payment_proof_path);
+                        }
 
-                $payment->delete();
-                $deleted++;
-            } catch (\Throwable $e) {
-                Log::error('Receipt retention cleanup failed', [
-                    'payment_id' => $payment->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+                        $payment->delete();
+                        $deleted++;
+                    } catch (\Throwable $e) {
+                        Log::error('Receipt retention cleanup failed', [
+                            'payment_id' => $payment->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            });
 
         return $deleted;
     }
@@ -103,15 +103,27 @@ class ReceiptStorageService
     protected function scanReceipt(UploadedFile $file, string $scanEndpoint): void
     {
         $apiKey = (string) config('receipt.scan_api_key', '');
+        $readTimeout    = (int) config('services.receipt_scan.timeout', 10);
+        $connectTimeout = (int) config('services.receipt_scan.connect_timeout', 5);
 
-        $response = Http::withHeaders(array_filter([
-            'Authorization' => $apiKey !== '' ? 'Bearer ' . $apiKey : null,
-            'Accept' => 'application/json',
-        ]))->attach(
-            'file',
-            fopen($file->getPathname(), 'rb'),
-            $file->getClientOriginalName()
-        )->post($scanEndpoint);
+        try {
+            $response = Http::timeout($readTimeout)
+                ->connectTimeout($connectTimeout)
+                ->withHeaders(array_filter([
+                    'Authorization' => $apiKey !== '' ? 'Bearer ' . $apiKey : null,
+                    'Accept' => 'application/json',
+                ]))->attach(
+                    'file',
+                    fopen($file->getPathname(), 'rb'),
+                    $file->getClientOriginalName()
+                )->post($scanEndpoint);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::warning('Receipt malware scan timed out or connection failed', [
+                'endpoint' => $scanEndpoint,
+                'error'    => $e->getMessage(),
+            ]);
+            throw new \RuntimeException('Receipt malware scan failed.');
+        }
 
         if ($response->failed()) {
             throw new \RuntimeException('Receipt malware scan failed.');

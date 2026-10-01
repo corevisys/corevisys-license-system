@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\ExchangeRate;
 use App\Models\ProductPrice;
 use App\Models\SystemSetting;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -62,7 +63,26 @@ class BKashPaymentService
         return $callbackUrl;
     }
 
+    private function tokenCacheKey(): string
+    {
+        return 'bkash_token:' . md5($this->baseUrl . '|' . $this->appKey);
+    }
+
     protected function grantToken(): string
+    {
+        $cached = Cache::get($this->tokenCacheKey());
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        return $this->grantFreshToken();
+    }
+
+    /**
+     * Fetch a fresh token from the bKash API.
+     * Called by grantToken() on cache miss, or directly after a stale-token retry.
+     */
+    protected function grantFreshToken(): string
     {
         if (!$this->isConfigured()) {
             throw new \Exception('bKash App Key / App Secret not configured.');
@@ -85,6 +105,14 @@ class BKashPaymentService
         if (($data['status_code'] ?? '') !== '0000' || empty($data['id_token'])) {
             throw new \Exception('bKash token grant rejected: ' . ($data['status_message'] ?? 'Unknown error'));
         }
+
+        if (isset($data['expires_in']) && (int) $data['expires_in'] > 60) {
+            $ttl = (int) $data['expires_in'] - 60;
+        } else {
+            $ttl = 3000;
+        }
+
+        Cache::put($this->tokenCacheKey(), $data['id_token'], $ttl);
 
         return $data['id_token'];
     }
@@ -118,8 +146,28 @@ class BKashPaymentService
             ]);
 
         if ($response->failed()) {
-            Log::error('bKash Create Payment Failed', ['status' => $response->status(), 'body' => $response->body()]);
-            throw new \Exception('bKash payment creation failed (' . $response->status() . ').');
+            // 401 likely means the cached token has been revoked; retry once with a fresh token.
+            if ($response->status() === 401) {
+                Cache::forget($this->tokenCacheKey());
+                $token = $this->grantFreshToken();
+
+                $response = $this->httpClient()
+                    ->withHeaders($this->headers($token))
+                    ->post($this->baseUrl . '/checkout/create', [
+                        'mode' => '0011',
+                        'payerReference' => (string) $order->id,
+                        'callbackURL' => $callbackUrl,
+                        'amount' => number_format($amount, 2, '.', ''),
+                        'currency' => 'BDT',
+                        'intent' => 'sale',
+                        'merchantInvoiceNumber' => $order->order_number,
+                    ]);
+            }
+
+            if ($response->failed()) {
+                Log::error('bKash Create Payment Failed', ['status' => $response->status(), 'body' => $response->body()]);
+                throw new \Exception('bKash payment creation failed (' . $response->status() . ').');
+            }
         }
 
         $data = $response->json();
@@ -140,8 +188,18 @@ class BKashPaymentService
             ->post($this->baseUrl . '/checkout/execute', ['paymentID' => $paymentID]);
 
         if ($response->failed()) {
-            Log::error('bKash Execute Payment Failed', ['status' => $response->status(), 'body' => $response->body()]);
-            throw new \Exception('bKash payment confirmation failed (' . $response->status() . ').');
+            if ($response->status() === 401) {
+                Cache::forget($this->tokenCacheKey());
+                $token = $this->grantFreshToken();
+                $response = $this->httpClient()
+                    ->withHeaders($this->headers($token))
+                    ->post($this->baseUrl . '/checkout/execute', ['paymentID' => $paymentID]);
+            }
+
+            if ($response->failed()) {
+                Log::error('bKash Execute Payment Failed', ['status' => $response->status(), 'body' => $response->body()]);
+                throw new \Exception('bKash payment confirmation failed (' . $response->status() . ').');
+            }
         }
 
         return $response->json();
@@ -156,8 +214,18 @@ class BKashPaymentService
             ->post($this->baseUrl . '/checkout/payment/status', ['paymentID' => $paymentID]);
 
         if ($response->failed()) {
-            Log::error('bKash Query Payment Failed', ['status' => $response->status(), 'body' => $response->body()]);
-            throw new \Exception('bKash payment status query failed (' . $response->status() . ').');
+            if ($response->status() === 401) {
+                Cache::forget($this->tokenCacheKey());
+                $token = $this->grantFreshToken();
+                $response = $this->httpClient()
+                    ->withHeaders($this->headers($token))
+                    ->post($this->baseUrl . '/checkout/payment/status', ['paymentID' => $paymentID]);
+            }
+
+            if ($response->failed()) {
+                Log::error('bKash Query Payment Failed', ['status' => $response->status(), 'body' => $response->body()]);
+                throw new \Exception('bKash payment status query failed (' . $response->status() . ').');
+            }
         }
 
         return $response->json();
