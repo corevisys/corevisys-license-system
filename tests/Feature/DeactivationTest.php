@@ -253,4 +253,94 @@ class DeactivationTest extends TestCase
         $license->refresh();
         $this->assertSame('primary.com', $license->bound_domain);
     }
+
+    #[Test]
+    public function deactivation_of_already_deactivated_license_is_rejected(): void
+    {
+        $license = $this->makeActiveLicense('example.com', 'fp-abc123');
+        $rawKey  = app(LicenseService::class)->rotateLicenseKey(
+            $license, 'TEST-ABCD-EFGH-IJKL'
+        )->raw_key;
+
+        // First deactivation succeeds
+        $this->postJson('/api/v1/license/deactivate', [
+            'license_key'  => $rawKey,
+            'domain'       => 'example.com',
+            'ip'           => '1.2.3.4',
+            'fingerprint'  => 'fp-abc123',
+            'product_code' => 'corevisys-crm',
+        ])->assertOk();
+
+        // Second deactivation from the now-unbound domain must be rejected
+        $response = $this->postJson('/api/v1/license/deactivate', [
+            'license_key'  => $rawKey,
+            'domain'       => 'example.com',
+            'ip'           => '1.2.3.4',
+            'fingerprint'  => 'fp-abc123',
+            'product_code' => 'corevisys-crm',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJson(['error_code' => 'unauthorised_domain']);
+    }
+
+    #[Test]
+    public function license_is_reactivatable_on_new_domain_after_deactivation(): void
+    {
+        $license = $this->makeActiveLicense('domain-a.com', 'fp-domain-a');
+        $rawKey  = app(LicenseService::class)->rotateLicenseKey(
+            $license, 'TEST-ABCD-EFGH-IJKL'
+        )->raw_key;
+
+        // Deactivate domain-a
+        $this->postJson('/api/v1/license/deactivate', [
+            'license_key'  => $rawKey,
+            'domain'       => 'domain-a.com',
+            'ip'           => '1.1.1.1',
+            'fingerprint'  => 'fp-domain-a',
+            'product_code' => 'corevisys-crm',
+        ])->assertOk();
+
+        // New domain activation succeeds and binds to new domain
+        $response = $this->postJson('/api/v1/license/activate', [
+            'license_key'  => $rawKey,
+            'domain'       => 'domain-b.com',
+            'ip'           => '2.2.2.2',
+            'fingerprint'  => 'fp-domain-b',
+            'product_code' => 'corevisys-crm',
+        ]);
+
+        $response->assertOk()->assertJson(['success' => true]);
+
+        $license->refresh();
+        $this->assertSame('domain-b.com', $license->bound_domain);
+        $this->assertSame('fp-domain-b', $license->bound_fingerprint);
+    }
+
+    #[Test]
+    public function deactivation_endpoint_rate_limits_excessive_requests(): void
+    {
+        $license = $this->makeActiveLicense('rate-limit.com', 'fp-rate');
+        $rawKey  = app(LicenseService::class)->rotateLicenseKey(
+            $license, 'TEST-ABCD-EFGH-IJKL'
+        )->raw_key;
+
+        // Rate limiter allows 10 per hour per IP. Make 10 requests.
+        for ($i = 0; $i < 10; $i++) {
+            $this->postJson('/api/v1/license/deactivate', [
+                'license_key'  => 'INVALID-KEY-FOR-RATE-LIMIT',
+                'domain'       => 'rate-limit.com',
+                'ip'           => '8.8.8.8',
+            ], ['REMOTE_ADDR' => '8.8.8.8']);
+        }
+
+        // 11th request must receive 429 Too Many Requests
+        $response = $this->postJson('/api/v1/license/deactivate', [
+            'license_key'  => 'INVALID-KEY-FOR-RATE-LIMIT',
+            'domain'       => 'rate-limit.com',
+            'ip'           => '8.8.8.8',
+        ], ['REMOTE_ADDR' => '8.8.8.8']);
+
+        $response->assertStatus(429);
+    }
 }
