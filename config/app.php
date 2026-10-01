@@ -105,6 +105,13 @@ return [
         ),
     ],
 
+    // NOTE: Changing LICENSE_PEPPER invalidates all non-NULL lookup_hash values in licenses.
+    // Run 'php artisan license:reset-lookup-hashes' after rotating the pepper so legacy fallback
+    // and backfill commands can rebuild them.
+    'license_pepper' => env('LICENSE_PEPPER'),
+    'license_fallback_rate_limit' => (int) env('LICENSE_FALLBACK_RATE_LIMIT', 30),
+    'license_fallback_rate_limit_window' => (int) env('LICENSE_FALLBACK_RATE_LIMIT_WINDOW', 60),
+
     /*
     |--------------------------------------------------------------------------
     | Maintenance Mode Driver

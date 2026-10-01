@@ -17,13 +17,13 @@ class CheckClientVersion
     public function handle(Request $request, Closure $next): Response
     {
         // 1. Check Kill Switch
-        $apiEnabled = SystemSetting::where('key', 'api_enabled')->value('value');
+        $apiEnabled = SystemSetting::getCached('api_enabled');
         if ($apiEnabled === 'false') {
             return response()->json(['message' => 'Service Unavailable', 'status' => false], 503);
         }
 
         // 2. Check Version
-        $minVersion = SystemSetting::where('key', 'min_supported_version')->value('value');
+        $minVersion = SystemSetting::getCached('min_supported_version');
         $clientVersion = $request->header('X-API-Version');
 
         if ($minVersion && $clientVersion) {

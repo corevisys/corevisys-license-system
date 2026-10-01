@@ -905,6 +905,8 @@ Route::middleware('auth')->group(function () {
                     ['key' => $key],
                     ['value' => $normalizedValue]
                 );
+
+                \Illuminate\Support\Facades\Cache::forget("setting:{$key}");
             }
 
             return back()->with('success', 'Settings updated successfully.');

@@ -31,7 +31,7 @@ class HandleInertiaRequests extends Middleware
     {
         $defaultTheme = 'terminal';
         try {
-            $defaultTheme = \App\Models\SystemSetting::where('key', 'default_theme')->value('value') ?? 'terminal';
+            $defaultTheme = \App\Models\SystemSetting::getCached('default_theme', 'terminal');
         } catch (\Throwable $e) {
             // Database not connected or table does not exist yet
         }

@@ -14,6 +14,8 @@ return new class extends Migration
             ->where('key', 'default_theme')
             ->where('value', 'dark-modern')
             ->update(['value' => 'terminal', 'updated_at' => now()]);
+
+        \Illuminate\Support\Facades\Cache::forget('setting:default_theme');
     }
 
     /**
@@ -25,5 +27,7 @@ return new class extends Migration
             ->where('key', 'default_theme')
             ->where('value', 'terminal')
             ->update(['value' => 'dark-modern', 'updated_at' => now()]);
+
+        \Illuminate\Support\Facades\Cache::forget('setting:default_theme');
     }
 };
