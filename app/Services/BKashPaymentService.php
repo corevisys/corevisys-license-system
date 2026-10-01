@@ -24,7 +24,7 @@ class BKashPaymentService
 
     public function isEnabled(): bool
     {
-        return SystemSetting::where('key', 'gateway_bkash_active')->value('value') === '1';
+        return SystemSetting::getCached('gateway_bkash_active', '0') === '1';
     }
 
     public function isConfigured(): bool
@@ -34,7 +34,7 @@ class BKashPaymentService
 
     protected function resolveBaseUrl(): string
     {
-        $sandbox = (string) SystemSetting::where('key', 'gateway_bkash_sandbox')->value('value');
+        $sandbox = (string) SystemSetting::getCached('gateway_bkash_sandbox', '1');
 
         return ($sandbox === '0' || strtolower($sandbox) === 'false')
             ? 'https://tokenized.pay.bka.sh/v1.2.0-beta'

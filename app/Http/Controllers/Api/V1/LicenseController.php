@@ -7,6 +7,7 @@ use App\Models\License;
 use App\Services\LicenseService;
 use App\Support\OfflineLicenseVerification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class LicenseController extends Controller
 {
@@ -159,13 +160,23 @@ class LicenseController extends Controller
 
     public function publicKey()
     {
+        // 1. Check cache first
+        $cached = Cache::get('license:public_key');
+        if (is_array($cached) && !empty($cached['public_key'])) {
+            return response()->json($cached);
+        }
+
+        // 2. Fetch fresh metadata
+        // NOTE: Call Cache::forget('license:public_key') whenever LICENSE_SIGNING_PUBLIC_KEY,
+        // LICENSE_SIGNING_KEY_ID, or rotation keys are updated or rotated.
         $meta = OfflineLicenseVerification::buildPublicKeyMetadata();
 
         if (empty($meta['public_key'])) {
+            // NEVER cache the error / unconfigured state
             return response()->json(['message' => 'Public key not configured'], 503);
         }
 
-        return response()->json([
+        $payload = [
             'key_id' => $meta['key_id'],
             'active_key_id' => $meta['active_key_id'],
             'algorithm' => $meta['algorithm'],
@@ -173,13 +184,20 @@ class LicenseController extends Controller
             'available_keys' => $meta['available_keys'],
             'rotation_overlap_days' => $meta['rotation_overlap_days'],
             'revoked_key_ids' => $meta['revoked_key_ids'],
-        ]);
+        ];
+
+        // 3. Cache ONLY the successful non-empty payload
+        Cache::put('license:public_key', $payload, 3600);
+
+        return response()->json($payload);
     }
 
     public function history(Request $request)
     {
         $request->validate([
             'license_key' => 'required|string',
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
         $license = $this->licenseService->findByKey($request->license_key);
@@ -188,21 +206,41 @@ class LicenseController extends Controller
             return response()->json(['message' => 'License not found'], 404);
         }
 
-        $history = $license->activations()
+        $query = $license->activations()
             ->orderBy('created_at', 'desc')
-            ->get(['id', 'request_ip', 'request_domain', 'status', 'failure_reason', 'created_at']);
+            ->orderBy('id', 'desc');
 
-        $history = $history->map(fn ($activation) => [
+        $isPaginated = $request->has('page') || $request->has('per_page');
+
+        if ($isPaginated) {
+            $page = max(1, (int) $request->input('page', 1));
+            $perPage = min(100, max(1, (int) $request->input('per_page', 15)));
+            $total = (clone $query)->count();
+            $activations = $query->forPage($page, $perPage)->get(['id', 'status', 'created_at']);
+        } else {
+            $activations = $query->limit(100)->get(['id', 'status', 'created_at']);
+        }
+
+        $history = $activations->map(fn ($activation) => [
             'id' => $activation->id,
             'status' => $activation->status,
             'created_at' => $activation->created_at,
-        ]);
+        ])->values();
 
-        return $this->successResponse([
+        $response = $this->successResponse([
             'license_type' => $license->type,
             'license_status' => $license->status,
             'history' => $history,
         ]);
+
+        if ($isPaginated) {
+            $response->header('X-Total-Count', (string) $total)
+                ->header('X-Page', (string) $page)
+                ->header('X-Per-Page', (string) $perPage)
+                ->header('X-Total-Pages', (string) (ceil($total / $perPage) ?: 1));
+        }
+
+        return $response;
     }
 
     protected function fingerprintGraceWindowIsActive(): bool

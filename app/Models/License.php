@@ -18,6 +18,7 @@ class License extends Model
         'product_id',
         'order_id',
         'license_key_hash',
+        'lookup_hash',
         'key_encrypted',
         'secret_salt',
         'status',

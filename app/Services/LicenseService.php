@@ -8,8 +8,10 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductPrice;
 use App\Models\TrialHistory;
-use Illuminate\Support\Str;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use App\Services\LicenseStateMachine;
 
 class LicenseService
@@ -22,25 +24,43 @@ class LicenseService
     }
 
     /**
+     * Retrieve the configured license pepper or throw a clear exception.
+     *
+     * @throws \RuntimeException
+     */
+    public static function getLicensePepper(): string
+    {
+        $pepper = config('app.license_pepper');
+        if (!is_string($pepper) || trim($pepper) === '') {
+            throw new \RuntimeException('License pepper is missing or empty. Please set LICENSE_PEPPER in your .env file.');
+        }
+
+        return $pepper;
+    }
+
+    /**
      * Create a new license for an order.
      */
+    /**
+     * Resolve existing license for renewal or upgrade.
+     */
+    protected function resolveLicenseForOrder(Order $order, Product $product): ?License
+    {
+        $license = $order->license_id ? License::find($order->license_id) : null;
+
+        return $license ?? License::where('user_id', $order->user_id)
+            ->where('product_id', $product->id)
+            ->latest()
+            ->first();
+    }
+
     /**
      * Renew an existing license.
      */
     public function renewLicense(Order $order, Product $product)
     {
         // 1. Find the specific license if ID is provided, else fallback to user/product lookup
-        $license = null;
-        if ($order->license_id) {
-            $license = License::find($order->license_id);
-        }
-
-        if (!$license) {
-            $license = License::where('user_id', $order->user_id)
-                ->where('product_id', $product->id)
-                ->latest()
-                ->first();
-        }
+        $license = $this->resolveLicenseForOrder($order, $product);
 
         if (!$license) {
             // Log::warning("Attempted renewal but no license found for Order #{$order->order_number}");
@@ -82,17 +102,7 @@ class LicenseService
     public function upgradeLicense(Order $order, Product $product)
     {
         // 1. Find the specific license
-        $license = null;
-        if ($order->license_id) {
-            $license = License::find($order->license_id);
-        }
-
-        if (!$license) {
-            $license = License::where('user_id', $order->user_id)
-                ->where('product_id', $product->id)
-                ->latest()
-                ->first();
-        }
+        $license = $this->resolveLicenseForOrder($order, $product);
 
         $orderItem = $order->items()->where('product_id', $product->id)->first();
         $newType = $orderItem->license_type ?? 'full'; // usage: 'full', 'subscription'
@@ -188,11 +198,15 @@ class LicenseService
             $expiresAt = Carbon::now()->addDays($billingPeriod);
         }
 
+        $pepper = static::getLicensePepper();
+        $lookupHash = hash_hmac('sha256', $keyPayload, $pepper);
+
         $license = License::create([
             'user_id' => $order->user_id,
             'product_id' => $product->id,
             'order_id' => $order->id,
             'license_key_hash' => $keyHash,
+            'lookup_hash' => $lookupHash,
             'key_encrypted' => $keyPayload,
             'secret_salt' => $salt,
             'type' => $type,
@@ -218,25 +232,126 @@ class LicenseService
     }
 
     /**
-     * Resolve a license by key using only salted hashes.
+     * Resolve a license by key using lookup_hash with timing-safe salted fallback.
      *
      * Legacy plaintext `license_key` values must be migrated first via
      * `php artisan license:migrate-legacy-keys`; rows that only have a raw
      * SHA-256 hash and no `secret_salt` are rejected by design.
      */
-    public function findByKey(string $key): ?License
+    /**
+     * Resolve a license by key using lookup_hash with abuse-protected legacy fallback.
+     *
+     * Legacy plaintext `license_key` values must be migrated first via
+     * `php artisan license:migrate-legacy-keys`; rows that only have a raw
+     * SHA-256 hash and no `secret_salt` are rejected by design.
+     */
+    public function findByKey(string $key, ?string $clientIp = null): ?License
     {
-        $saltyLicenses = License::whereNotNull('secret_salt')
-            ->whereNotNull('license_key_hash')
-            ->get();
+        $pepper = static::getLicensePepper();
+        $lookupHash = hash_hmac('sha256', $key, $pepper);
 
-        foreach ($saltyLicenses as $license) {
-            if (hash_equals($license->license_key_hash, hash('sha256', $key . $license->secret_salt))) {
+        $license = License::where('lookup_hash', $lookupHash)->first();
+        if ($license) {
+            if ($license->secret_salt && $license->license_key_hash && hash_equals($license->license_key_hash, hash('sha256', $key . $license->secret_salt))) {
                 return $license;
+            }
+            return null;
+        }
+
+        // 1. Check if there are any NULL-lookup_hash rows left (cached for 60s)
+        $hasLegacyRows = Cache::remember('license:has_legacy_lookup_rows', 60, function () {
+            return License::whereNull('lookup_hash')
+                ->whereNotNull('secret_salt')
+                ->whereNotNull('license_key_hash')
+                ->exists();
+        });
+
+        if (!$hasLegacyRows) {
+            return null;
+        }
+
+        // 2. Per-IP rate limiting on fallback scans to prevent abuse on wrong keys.
+        //
+        // When there is no HTTP request context (console commands, queue jobs) the
+        // resolved IP is null.  We deliberately skip the per-IP counter in that case
+        // rather than falling back to '127.0.0.1', which would create a single shared
+        // bucket that throttles all queue workers together after only 30 fallback scans.
+        $resolvedIp     = $clientIp ?? request()?->ip();   // null in console/queue
+        $fallbackLimit  = (int) config('app.license_fallback_rate_limit', 30);
+        $fallbackWindow = (int) config('app.license_fallback_rate_limit_window', 60);
+
+        if (app()->isProduction()) {
+            $driver = Cache::getDefaultDriver();
+            if (in_array($driver, ['array', 'file'], true)) {
+                Log::warning("Fallback rate limiting is using non-shared cache driver '{$driver}' in production; rate limits are not shared across server instances. Consider configuring redis or memcached.");
             }
         }
 
+        if ($resolvedIp !== null) {
+            $cacheKey        = "license_fallback_count:{$resolvedIp}";
+            $currentAttempts = (int) Cache::get($cacheKey, 0);
+
+            if ($currentAttempts >= $fallbackLimit) {
+                // Abuse protection: limit exceeded, skip fallback scan and return null
+                return null;
+            }
+
+            Cache::put($cacheKey, $currentAttempts + 1, $fallbackWindow);
+        }
+
+        // 3. Fallback for legacy licenses (lookup_hash NULL)
+        $matchedCandidate = null;
+        License::whereNull('lookup_hash')
+            ->whereNotNull('secret_salt')
+            ->whereNotNull('license_key_hash')
+            ->select(['id', 'license_key_hash', 'secret_salt'])
+            ->chunkById(500, function ($licenses) use ($key, &$matchedCandidate) {
+                foreach ($licenses as $candidate) {
+                    if (hash_equals($candidate->license_key_hash, hash('sha256', $key . $candidate->secret_salt))) {
+                        $matchedCandidate = $candidate;
+                        return false;
+                    }
+                }
+            });
+
+        if ($matchedCandidate) {
+            License::where('id', $matchedCandidate->id)->update(['lookup_hash' => $lookupHash]);
+            Cache::forget('license:has_legacy_lookup_rows');
+            return License::find($matchedCandidate->id);
+        }
+
         return null;
+    }
+
+    /**
+     * Rotate a license's key and update lookup and salted hashes.
+     */
+    public function rotateLicenseKey(License $license, ?string $newKeyPayload = null): License
+    {
+        $product = $license->product;
+        if (!$newKeyPayload) {
+            $prefix = strtoupper(substr($product?->slug ?? $product?->name ?? 'CORE', 0, 4));
+            $newKeyPayload = $prefix . '-' . 
+                          strtoupper(Str::random(4)) . '-' . 
+                          strtoupper(Str::random(4)) . '-' . 
+                          strtoupper(Str::random(4));
+        }
+
+        $salt = Str::random(32);
+        $keyHash = hash('sha256', $newKeyPayload . $salt);
+        $pepper = static::getLicensePepper();
+        $lookupHash = hash_hmac('sha256', $newKeyPayload, $pepper);
+
+        $license->update([
+            'license_key_hash' => $keyHash,
+            'lookup_hash' => $lookupHash,
+            'key_encrypted' => $newKeyPayload,
+            'secret_salt' => $salt,
+        ]);
+
+        $license->raw_key = $newKeyPayload;
+
+        return $license;
     }
 
     public function activate(string $key, string $domain, string $ip, ?string $fingerprint = null, ?string $enforcementMode = null)
@@ -290,8 +405,8 @@ class LicenseService
         $activationLimit = $license->activation_limit ?? 1;
         $activeBindingsCount = LicenseActivation::where('license_id', $license->id)
             ->where('status', 'success')
-            ->distinct('request_domain')
-            ->count();
+            ->distinct()
+            ->count('request_domain');
 
         // Check if this is a NEW domain/environment activation
         $isExistingBinding = ($license->bound_domain === $domain) || 
@@ -429,7 +544,7 @@ class LicenseService
             return false;
         }
 
-        $storedDeadline = \App\Models\SystemSetting::where('key', 'fingerprint_enforcement_deadline')->value('value');
+        $storedDeadline = \App\Models\SystemSetting::getCached('fingerprint_enforcement_deadline');
         $deadline = $storedDeadline
             ? Carbon::parse($storedDeadline)
             : Carbon::parse(config('services.license.fingerprint_enforcement_deadline', now()->addDays(90)->format('Y-m-d')));
@@ -481,50 +596,62 @@ class LicenseService
 
     public function processRenewals()
     {
-        // 1. Find due assignments
-        $licenses = License::where('auto_renew', true)
+        // 1. Query licenses due for renewal
+        $dueQuery = License::where('auto_renew', true)
             ->where('status', 'active')
             ->whereNotNull('next_billing_at')
-            ->where('next_billing_at', '<=', Carbon::now())
-            ->get();
+            ->where('next_billing_at', '<=', Carbon::now());
+
+        $productIds = (clone $dueQuery)
+            ->select('product_id')
+            ->distinct()
+            ->pluck('product_id')
+            ->filter()
+            ->all();
+
+        $prices = empty($productIds)
+            ? collect()
+            : ProductPrice::where('type', 'full')
+                ->whereIn('product_id', $productIds)
+                ->get()
+                ->keyBy('product_id');
 
         $results = ['success' => 0, 'failed' => 0];
 
-        foreach ($licenses as $license) {
-            // Find the associated price to get billing period
-            // In real app, we might store the specific price_id on the license/order
-            $price = ProductPrice::where('product_id', $license->product_id)
-                ->where('type', 'full') // Assuming full for subscriptions
-                ->first();
+        $dueQuery->chunkById(500, function ($licenses) use (&$results, $prices) {
+            foreach ($licenses as $license) {
+                // Find the associated price to get billing period
+                $price = $prices->get($license->product_id);
 
-            // Billing period is stored as integer days. NULL = lifetime (no auto-renew).
-            $billingPeriod = $price ? (int) $price->billing_period : 30;
+                // Billing period is stored as integer days. NULL = lifetime (no auto-renew).
+                $billingPeriod = $price ? (int) $price->billing_period : 30;
 
-            // Mock Payment Logic
-            $paymentSuccess = true; // Simulating success for now
+                // Mock Payment Logic
+                $paymentSuccess = true; // Simulating success for now
 
-            if ($paymentSuccess) {
-                // Extend Expiry by the configured billing period.
-                $base = $license->expires_at ?? Carbon::now();
-                $newExpiry = $base->copy()->addDays($billingPeriod);
+                if ($paymentSuccess) {
+                    // Extend Expiry by the configured billing period.
+                    $base = $license->expires_at ?? Carbon::now();
+                    $newExpiry = $base->copy()->addDays($billingPeriod);
 
-                $license->update([
-                    'expires_at' => $newExpiry,
-                    'next_billing_at' => $newExpiry->copy()->addDays($billingPeriod),
-                    'last_check_at' => Carbon::now()
-                ]);
+                    $license->update([
+                        'expires_at' => $newExpiry,
+                        'next_billing_at' => $newExpiry->copy()->addDays($billingPeriod),
+                        'last_check_at' => Carbon::now()
+                    ]);
 
-                \App\Services\AuditService::log('license_renewed', $license, ['period' => $billingPeriod]);
-                $results['success']++;
-            } else {
-                // Upgrade 4: Set Grace Period on Failure
-                if (is_null($license->grace_expires_at)) {
-                    $license->update(['grace_expires_at' => Carbon::now()->addDays(7)]);
-                    \App\Services\AuditService::log('license_renewal_failed_grace_started', $license);
+                    \App\Services\AuditService::log('license_renewed', $license, ['period' => $billingPeriod]);
+                    $results['success']++;
+                } else {
+                    // Upgrade 4: Set Grace Period on Failure
+                    if (is_null($license->grace_expires_at)) {
+                        $license->update(['grace_expires_at' => Carbon::now()->addDays(7)]);
+                        \App\Services\AuditService::log('license_renewal_failed_grace_started', $license);
+                    }
+                    $results['failed']++;
                 }
-                $results['failed']++;
             }
-        }
+        });
 
         return $results;
     }

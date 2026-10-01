@@ -32,5 +32,6 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="LICENSE_PEPPER" value="test-license-pepper-secret-32-chars-long"/>
     </php>
 </phpunit>

@@ -23,6 +23,40 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
         ]);
+
+        $trustedProxies = env('TRUSTED_PROXIES');
+
+        if ($trustedProxies === '*') {
+            $proxies = '*';
+        } elseif (!empty($trustedProxies)) {
+            $proxies = array_map('trim', explode(',', $trustedProxies));
+        } else {
+            // TRUSTED_PROXIES is unset. In production this means every request that
+            // arrives through a load-balancer will use the LB's internal socket IP as
+            // the "client" IP, causing ALL end-user clients to share one fallback-scan
+            // rate-limit bucket after as few as 30 scans.
+            if (app()->environment('production', 'staging')) {
+                \Illuminate\Support\Facades\Log::error(
+                    'TRUSTED_PROXIES is not configured. IP-based rate limiting WILL be incorrect in production: ' .
+                    'all clients behind a load-balancer share one rate-limit bucket. ' .
+                    'Set TRUSTED_PROXIES to your load-balancer CIDRs, or "*" if the network layer handles spoofing.'
+                );
+            } elseif (!app()->environment('local', 'testing')) {
+                \Illuminate\Support\Facades\Log::warning(
+                    'TRUSTED_PROXIES is not set. IP-based rate limiting may be inaccurate.'
+                );
+            }
+            $proxies = [];   // trust no proxies; use the actual socket IP
+        }
+
+        $middleware->trustProxies(
+            at: $proxies,
+            headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR |
+                     \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST |
+                     \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT |
+                     \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO |
+                     \Illuminate\Http\Request::HEADER_X_FORWARDED_AWS_ELB
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

@@ -47,7 +47,7 @@ class VersioningTest extends TestCase
 
     public function test_kill_switch_activates_maintenance_mode()
     {
-        SystemSetting::where('key', 'api_enabled')->update(['value' => 'false']);
+        SystemSetting::where('key', 'api_enabled')->first()->update(['value' => 'false']);
 
         $response = $this->withHeaders([
             'X-API-Version' => '1.0.0'

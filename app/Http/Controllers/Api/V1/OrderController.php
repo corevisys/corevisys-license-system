@@ -11,7 +11,11 @@ use App\Services\LicenseService;
 use App\Services\OrderFulfillmentService;
 use App\Services\ReceiptStorageService;
 use App\Support\OrderStatus;
+use Illuminate\Database\QueryException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -178,12 +182,8 @@ class OrderController extends Controller
 
         $file = $request->file('receipt');
 
-        // Security: Duplicate Receipt Hashing Prevention
+        // Security: Duplicate Receipt Hashing Prevention via unique database constraint
         $receiptHash = hash_file('sha256', $file->getPathname());
-        $exists = \App\Models\Payment::where('receipt_hash', $receiptHash)->exists();
-        if ($exists) {
-            return response()->json(['status' => false, 'message' => 'This receipt has already been submitted.'], 400);
-        }
 
         $storageService = app(ReceiptStorageService::class);
         $path = $storageService->storeUploadedReceipt($file);
@@ -192,18 +192,44 @@ class OrderController extends Controller
         $exchangeRate = $this->currencyService->getRate($order->currency);
         $baseAmount = $this->currencyService->convertToBase($order->total_amount, $order->currency);
 
-        $order->payments()->create([
-            'user_id' => $request->user()->id,
-            'gateway' => 'offline',
-            'amount' => $order->total_amount,
-            'exchange_rate' => $exchangeRate,
-            'base_currency_amount' => $baseAmount,
-            'status' => 'pending',
-            'payment_proof_path' => $path,
-            'receipt_hash' => $receiptHash
-        ]);
+        try {
+            DB::transaction(function () use ($order, $request, $exchangeRate, $baseAmount, $path, $receiptHash) {
+                $order->payments()->create([
+                    'user_id'              => $request->user()->id,
+                    'gateway'              => 'offline',
+                    'amount'               => $order->total_amount,
+                    'exchange_rate'        => $exchangeRate,
+                    'base_currency_amount' => $baseAmount,
+                    'status'               => 'pending',
+                    'payment_proof_path'   => $path,
+                    'receipt_hash'         => $receiptHash
+                ]);
 
-        $order->update(['status' => OrderStatus::AWAITING_PAYMENT]);
+                $order->update(['status' => OrderStatus::AWAITING_PAYMENT]);
+            });
+        } catch (UniqueConstraintViolationException $e) {
+            Storage::disk(config('receipt.storage_disk', 'local'))->delete($path);
+            // Only treat a violation on payments.receipt_hash as a duplicate-receipt error.
+            // Any violation on a different column or table is a real bug — rethrow it.
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'receipt_hash') || str_contains($msg, 'payments_receipt_hash_unique')) {
+                return response()->json(['status' => false, 'message' => 'This receipt has already been submitted.'], 400);
+            }
+            throw $e;
+        } catch (QueryException $e) {
+            Storage::disk(config('receipt.storage_disk', 'local'))->delete($path);
+            // MySQL SQLSTATE 23000 / SQLite code 19 with receipt_hash mention → duplicate receipt.
+            $msg = $e->getMessage();
+            $isUniqueViolation = ($e->getCode() == 23000 || $e->getCode() == 19)
+                && (str_contains($msg, 'receipt_hash') || str_contains($msg, 'payments_receipt_hash_unique'));
+            if ($isUniqueViolation) {
+                return response()->json(['status' => false, 'message' => 'This receipt has already been submitted.'], 400);
+            }
+            throw $e;
+        } catch (\Throwable $e) {
+            Storage::disk(config('receipt.storage_disk', 'local'))->delete($path);
+            throw $e;
+        }
 
         return response()->json([
             'status' => 'success',
