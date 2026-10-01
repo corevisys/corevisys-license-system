@@ -13,17 +13,16 @@ use Inertia\Inertia;
 | and never touch business logic, services, payments, or license state.
 */
 
-// cPanel 1-Click Setup & Migration Wizard
-Route::get('/cpanel-setup', [\App\Http\Controllers\CPanelSetupController::class, 'index'])->name('cpanel.setup');
-Route::post('/cpanel-setup', [\App\Http\Controllers\CPanelSetupController::class, 'runSetup'])->name('cpanel.setup.run');
+// cPanel web installer removed (FIX-003).
+// Use `php artisan corevisys:install` from the CLI instead.
 
 Route::get('/', function () {
     try {
         if (!\Illuminate\Support\Facades\Schema::hasTable('products')) {
-            return redirect()->route('cpanel.setup');
+            abort(503, 'Application not yet installed. Run: php artisan corevisys:install');
         }
     } catch (\Throwable $e) {
-        return redirect()->route('cpanel.setup');
+        abort(503, 'Database unavailable. Check your .env configuration.');
     }
 
     return Inertia::render('Public/Home', [
