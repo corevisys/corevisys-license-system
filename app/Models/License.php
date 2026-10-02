@@ -38,8 +38,6 @@ class License extends Model
         'last_check_at',
         'enforcement_mode',
         'team_id',
-        'created_at',
-        'updated_at',
     ];
 
     protected $hidden = [

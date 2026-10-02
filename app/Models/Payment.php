@@ -23,8 +23,6 @@ class Payment extends Model
         'receipt_hash',
         'admin_notes',
         'verified_by',
-        'created_at',
-        'updated_at',
     ];
 
     protected $casts = [
