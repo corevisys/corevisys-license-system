@@ -28,9 +28,11 @@ test('renewal logic uses billing period in days', function () {
     ]);
 
     // Renewal-cycle payment recorded now (strictly after license creation)
+    // Must be explicitly linked to the license (license_id) to qualify under FIX-005.
     Payment::create([
         'order_id'       => $license->order_id,
         'user_id'        => $license->user_id,
+        'license_id'     => $license->id,
         'gateway'        => 'manual',
         'transaction_id' => 'tx_unit_test',
         'amount'         => 100,
@@ -48,5 +50,6 @@ test('renewal logic uses billing period in days', function () {
     // Should be extended by 365 days from the previous expiry.
     $expected = now()->subDay()->addDays(365)->startOfDay();
     expect($license->expires_at->startOfDay()->format('Y-m-d'))->toBe($expected->format('Y-m-d'));
-    expect($license->next_billing_at->isAfter($license->expires_at))->toBeTrue();
+    // next_billing_at must equal expires_at (billing alignment fix 1f)
+    expect($license->next_billing_at->format('Y-m-d'))->toBe($license->expires_at->format('Y-m-d'));
 });

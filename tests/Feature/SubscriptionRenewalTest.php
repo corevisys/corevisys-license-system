@@ -26,36 +26,44 @@ class SubscriptionRenewalTest extends TestCase
         // 1. Setup
         $user = User::factory()->create();
         $product = Product::factory()->create();
+        $product->prices()->create([
+            'type'           => 'subscription',
+            'amount'         => 10,
+            'currency'       => 'USD',
+            'billing_period' => 30,
+        ]);
         $order = Order::create([
             'order_number' => 'SUB-TEST',
-            'user_id' => $user->id,
+            'user_id'      => $user->id,
             'total_amount' => 10,
-            'currency' => 'USD',
-            'status' => 'completed'
-        ]);
-
-        Payment::create([
-            'order_id' => $order->id,
-            'user_id' => $user->id,
-            'gateway' => 'stripe',
-            'transaction_id' => 'in_sub_123',
-            'amount' => 10,
-            'status' => 'verified',
+            'currency'     => 'USD',
+            'status'       => 'completed'
         ]);
 
         $license = License::create([
-            'user_id' => $user->id,
-            'product_id' => $product->id,
-            'order_id' => $order->id,
+            'user_id'        => $user->id,
+            'product_id'     => $product->id,
+            'order_id'       => $order->id,
             'license_key_hash' => hash('sha256', 'SUBKEY' . 'salt-subkey'),
-            'secret_salt' => 'salt-subkey',
-            'type' => 'subscription',
-            'status' => 'active',
-            'auto_renew' => true,
-            'created_at' => Carbon::now()->subDays(30),
-            'expires_at' => Carbon::now()->subMinute(), // Expired
+            'secret_salt'    => 'salt-subkey',
+            'type'           => 'subscription',
+            'status'         => 'active',
+            'auto_renew'     => true,
+            'created_at'     => Carbon::now()->subDays(30),
+            'expires_at'     => Carbon::now()->subMinute(), // Expired
             'next_billing_at' => Carbon::now()->subMinute(), // Due
-            'gateway_subscription_id' => 'sub_123',
+            // No gateway_subscription_id: non-Stripe path processed by cron
+        ]);
+
+        // Renewal-cycle payment explicitly linked to the license (FIX-005 requirement).
+        Payment::create([
+            'order_id'       => $order->id,
+            'user_id'        => $user->id,
+            'license_id'     => $license->id,
+            'gateway'        => 'manual',
+            'transaction_id' => 'in_sub_test_123',
+            'amount'         => 10,
+            'status'         => 'verified',
         ]);
 
         // 2. Run Service directly (or command)
@@ -67,7 +75,11 @@ class SubscriptionRenewalTest extends TestCase
 
         $license->refresh();
         $this->assertTrue($license->expires_at->isFuture());
-        $this->assertTrue($license->next_billing_at->isFuture());
+        // next_billing_at must equal expires_at (billing alignment fix 1f)
+        $this->assertEquals(
+            $license->expires_at->format('Y-m-d'),
+            $license->next_billing_at->format('Y-m-d')
+        );
     }
 
     public function test_order_fulfillment_rolls_back_when_license_generation_fails()
