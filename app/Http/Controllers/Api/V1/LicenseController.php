@@ -28,18 +28,19 @@ class LicenseController extends Controller
             'product_code' => 'nullable|string|max:100',
         ]);
 
+        $productCode = $request->filled('product_code') ? $request->input('product_code') : null;
+
         $result = $this->licenseService->activate(
             $request->license_key,
             $request->domain,
             $request->input('ip') ?? $request->input('ip_address'),
             $request->input('fingerprint'),
             $request->input('enforcement_mode'),
-            $request->input('product_code')
+            $productCode
         );
 
         if (!$result['status']) {
-            $status = ($result['error_code'] ?? null) === 'product_code_mismatch' ? 422 : 403;
-            return response()->json($result, $status);
+            return response()->json($result, 403);
         }
 
         return $this->successResponse($this->licensePayload($result['license']));
@@ -69,11 +70,16 @@ class LicenseController extends Controller
         if ($request->filled('product_code')) {
             $expectedSlug = $license->product?->slug;
             if ($expectedSlug !== null && $expectedSlug !== $request->input('product_code')) {
+                \Illuminate\Support\Facades\Log::warning('Product code mismatch during license check', [
+                    'license_id' => $license->id,
+                    'expected'   => $expectedSlug,
+                    'provided'   => $request->input('product_code'),
+                ]);
                 return response()->json([
-                    'status' => false,
-                    'message' => 'License is not valid for product: ' . $request->input('product_code'),
-                    'error_code' => 'product_code_mismatch',
-                ], 422);
+                    'status'     => false,
+                    'message'    => 'Invalid License Key',
+                    'error_code' => 'invalid_license_key',
+                ], 403);
             }
         }
 
@@ -128,11 +134,16 @@ class LicenseController extends Controller
         if ($request->filled('product_code')) {
             $expectedSlug = $license->product?->slug;
             if ($expectedSlug !== null && $expectedSlug !== $request->input('product_code')) {
+                \Illuminate\Support\Facades\Log::warning('Product code mismatch during license pulse', [
+                    'license_id' => $license->id,
+                    'expected'   => $expectedSlug,
+                    'provided'   => $request->input('product_code'),
+                ]);
                 return response()->json([
-                    'status' => false,
-                    'message' => 'License is not valid for product: ' . $request->input('product_code'),
-                    'error_code' => 'product_code_mismatch',
-                ], 422);
+                    'status'     => false,
+                    'message'    => 'Invalid License Key',
+                    'error_code' => 'invalid_license_key',
+                ], 403);
             }
         }
 
@@ -207,18 +218,27 @@ class LicenseController extends Controller
         $license = $this->licenseService->findByKey($request->license_key);
 
         if (! $license) {
-            return response()->json(['status' => false, 'message' => 'Invalid License Key'], 404);
+            return response()->json([
+                'status'     => false,
+                'message'    => 'Invalid License Key',
+                'error_code' => 'license_not_found',
+            ], 404);
         }
 
         // Optional product-code guard (same as activate/check/pulse)
         if ($request->filled('product_code')) {
             $expectedSlug = $license->product?->slug;
             if ($expectedSlug !== null && $expectedSlug !== $request->input('product_code')) {
+                \Illuminate\Support\Facades\Log::warning('Product code mismatch during license deactivate', [
+                    'license_id' => $license->id,
+                    'expected'   => $expectedSlug,
+                    'provided'   => $request->input('product_code'),
+                ]);
                 return response()->json([
                     'status'     => false,
-                    'message'    => 'License is not valid for product: ' . $request->input('product_code'),
-                    'error_code' => 'product_code_mismatch',
-                ], 422);
+                    'message'    => 'Invalid License Key',
+                    'error_code' => 'invalid_license_key',
+                ], 403);
             }
         }
 
@@ -232,7 +252,7 @@ class LicenseController extends Controller
 
         if (! $result['status']) {
             $httpStatus = match ($result['error_code'] ?? '') {
-                'product_code_mismatch' => 422,
+                'already_deactivated'   => 409,
                 'fingerprint_mismatch'  => 403,
                 'unauthorised_domain'   => 403,
                 default                 => 403,

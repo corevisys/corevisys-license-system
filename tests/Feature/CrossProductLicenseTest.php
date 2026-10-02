@@ -68,9 +68,9 @@ class CrossProductLicenseTest extends TestCase
             'product_code' => 'expensive-erp', // Mismatch!
         ]);
 
-        $response->assertStatus(422)
+        $response->assertStatus(403)
             ->assertJsonPath('status', false)
-            ->assertJsonPath('error_code', 'product_code_mismatch');
+            ->assertJsonPath('error_code', 'invalid_license_key');
     }
 
     public function test_activation_accepts_matching_product_code(): void
@@ -102,9 +102,9 @@ class CrossProductLicenseTest extends TestCase
             'product_code' => 'expensive-erp', // Mismatch!
         ]);
 
-        $response->assertStatus(422)
+        $response->assertStatus(403)
             ->assertJsonPath('status', false)
-            ->assertJsonPath('error_code', 'product_code_mismatch');
+            ->assertJsonPath('error_code', 'invalid_license_key');
     }
 
     public function test_check_accepts_matching_product_code(): void
@@ -140,9 +140,9 @@ class CrossProductLicenseTest extends TestCase
             'product_code' => 'expensive-erp', // Mismatch!
         ]);
 
-        $response->assertStatus(422)
+        $response->assertStatus(403)
             ->assertJsonPath('status', false)
-            ->assertJsonPath('error_code', 'product_code_mismatch');
+            ->assertJsonPath('error_code', 'invalid_license_key');
     }
 
     public function test_pulse_accepts_matching_product_code(): void

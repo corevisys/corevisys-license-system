@@ -178,7 +178,7 @@ class DeactivationTest extends TestCase
     }
 
     #[Test]
-    public function deactivation_returns_422_for_product_code_mismatch(): void
+    public function deactivation_returns_403_for_product_code_mismatch(): void
     {
         $license = $this->makeActiveLicense('example.com', 'fp-abc123', 'corevisys-crm');
         $rawKey  = app(LicenseService::class)->rotateLicenseKey(
@@ -191,7 +191,7 @@ class DeactivationTest extends TestCase
             'ip'           => '1.2.3.4',
             'fingerprint'  => 'fp-abc123',
             'product_code' => 'wrong-product',
-        ])->assertStatus(422)->assertJson(['error_code' => 'product_code_mismatch']);
+        ])->assertStatus(403)->assertJson(['error_code' => 'invalid_license_key']);
     }
 
     #[Test]
