@@ -312,4 +312,146 @@ class FingerprintTest extends TestCase
         config()->set('services.license.fingerprint_enforcement_deadline', null);
         $this->assertFalse($service->fingerprintGraceWindowIsActive());
     }
+
+    public function test_http_fingerprint_enforcement_default_is_enforced(): void
+    {
+        config()->set('services.license.fingerprint_enforcement_deadline', null);
+        \App\Models\SystemSetting::where('key', 'fingerprint_enforcement_deadline')->delete();
+        \Illuminate\Support\Facades\Cache::forget('system_setting_fingerprint_enforcement_deadline');
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $order = \App\Models\Order::create([
+            'order_number' => 'FP-HTTP-DEF',
+            'user_id' => $user->id,
+            'total_amount' => 10,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $rawKey = 'FP-KEY-HTTP-DEF';
+        $salt = 'salt-def';
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key' => $rawKey,
+            'license_key_hash' => hash('sha256', $rawKey . $salt),
+            'lookup_hash' => hash_hmac('sha256', $rawKey, LicenseService::getLicensePepper()),
+            'secret_salt' => $salt,
+            'type' => 'full',
+            'status' => 'active',
+            'bound_domain' => 'example.com',
+            'bound_ip' => '1.1.1.1',
+            'bound_fingerprint' => 'bound_hash',
+            'activated_at' => now(),
+        ]);
+
+        // Default: missing fingerprint rejected with 403
+        $response = $this->postJson('/api/v1/license/activate', [
+            'license_key' => $rawKey,
+            'domain' => 'example.com',
+            'ip' => '1.1.1.1',
+            'product_code' => $product->slug,
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'fingerprint_mismatch');
+    }
+
+    public function test_http_fingerprint_enforcement_future_deadline_allows_grace(): void
+    {
+        config()->set('services.license.fingerprint_grace_mode', true);
+        config()->set('services.license.fingerprint_enforcement_deadline', now()->addDays(14)->format('Y-m-d'));
+        \App\Models\SystemSetting::where('key', 'fingerprint_enforcement_deadline')->delete();
+        \Illuminate\Support\Facades\Cache::forget('system_setting_fingerprint_enforcement_deadline');
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $order = \App\Models\Order::create([
+            'order_number' => 'FP-HTTP-FUT',
+            'user_id' => $user->id,
+            'total_amount' => 10,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $rawKey = 'FP-KEY-HTTP-FUT';
+        $salt = 'salt-fut';
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key' => $rawKey,
+            'license_key_hash' => hash('sha256', $rawKey . $salt),
+            'lookup_hash' => hash_hmac('sha256', $rawKey, LicenseService::getLicensePepper()),
+            'secret_salt' => $salt,
+            'type' => 'full',
+            'status' => 'active',
+            'bound_domain' => 'example.com',
+            'bound_ip' => '1.1.1.1',
+            'bound_fingerprint' => 'bound_hash',
+            'activated_at' => now(),
+        ]);
+
+        // Future deadline: missing fingerprint is accepted during grace window
+        $response = $this->postJson('/api/v1/license/activate', [
+            'license_key' => $rawKey,
+            'domain' => 'example.com',
+            'ip' => '1.1.1.1',
+            'product_code' => $product->slug,
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('status', 'success');
+    }
+
+    public function test_http_fingerprint_enforcement_past_deadline_is_enforced(): void
+    {
+        config()->set('services.license.fingerprint_grace_mode', true);
+        config()->set('services.license.fingerprint_enforcement_deadline', now()->subDay()->format('Y-m-d'));
+        \App\Models\SystemSetting::where('key', 'fingerprint_enforcement_deadline')->delete();
+        \Illuminate\Support\Facades\Cache::forget('system_setting_fingerprint_enforcement_deadline');
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $order = \App\Models\Order::create([
+            'order_number' => 'FP-HTTP-PAST',
+            'user_id' => $user->id,
+            'total_amount' => 10,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $rawKey = 'FP-KEY-HTTP-PAST';
+        $salt = 'salt-past';
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key' => $rawKey,
+            'license_key_hash' => hash('sha256', $rawKey . $salt),
+            'lookup_hash' => hash_hmac('sha256', $rawKey, LicenseService::getLicensePepper()),
+            'secret_salt' => $salt,
+            'type' => 'full',
+            'status' => 'active',
+            'bound_domain' => 'example.com',
+            'bound_ip' => '1.1.1.1',
+            'bound_fingerprint' => 'bound_hash',
+            'activated_at' => now(),
+        ]);
+
+        // Past deadline: missing fingerprint rejected with 403
+        $response = $this->postJson('/api/v1/license/activate', [
+            'license_key' => $rawKey,
+            'domain' => 'example.com',
+            'ip' => '1.1.1.1',
+            'product_code' => $product->slug,
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'fingerprint_mismatch');
+    }
 }
