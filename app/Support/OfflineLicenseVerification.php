@@ -21,23 +21,29 @@ final class OfflineLicenseVerification
 
     public static function buildPublicKeyMetadata(): array
     {
+        $revokedKeyIds = array_values(array_filter(array_map('trim', (array) config('services.license.signing_revoked_key_ids', []))));
         $keyMap = self::availableKeys();
-        $activeKeyId = config('services.license.signing_key_id');
 
-        $activePublicKey = $keyMap[$activeKeyId] ?? config('services.license.signing_public_key');
+        $activeKeyId = config('services.license.signing_key_id');
+        $isRevokedActiveKey = !empty($activeKeyId) && in_array($activeKeyId, $revokedKeyIds, true);
+
+        $activePublicKey = null;
+        if (!$isRevokedActiveKey && !empty($activeKeyId)) {
+            $activePublicKey = $keyMap[$activeKeyId] ?? config('services.license.signing_public_key');
+        }
 
         return [
-            'key_id' => $activeKeyId,
-            'active_key_id' => $activeKeyId,
+            'key_id' => $isRevokedActiveKey ? null : $activeKeyId,
+            'active_key_id' => $isRevokedActiveKey ? null : $activeKeyId,
             'public_key' => $activePublicKey,
             'algorithm' => self::SIGNING_ALGORITHM,
-            'available_keys' => array_map(
+            'available_keys' => array_values(array_map(
                 fn (string $keyId, string $publicKey) => ['key_id' => $keyId, 'public_key' => $publicKey],
                 array_keys($keyMap),
                 array_values($keyMap)
-            ),
+            )),
             'rotation_overlap_days' => (int) config('services.license.rotation_overlap_days', config('services.license.signing_rotation_overlap_days', 30)),
-            'revoked_key_ids' => array_values(array_filter(array_map('trim', (array) config('services.license.signing_revoked_key_ids', [])))),
+            'revoked_key_ids' => $revokedKeyIds,
         ];
     }
 
@@ -70,16 +76,21 @@ final class OfflineLicenseVerification
 
     protected static function availableKeys(): array
     {
+        $revokedKeyIds = array_values(array_filter(array_map('trim', (array) config('services.license.signing_revoked_key_ids', []))));
         $configuredKeys = config('services.license.signing_public_keys', []);
 
         if (is_array($configuredKeys) && !empty($configuredKeys)) {
-            return $configuredKeys;
+            return array_filter(
+                $configuredKeys,
+                fn (string $keyId) => !in_array($keyId, $revokedKeyIds, true),
+                ARRAY_FILTER_USE_KEY
+            );
         }
 
         $activeKeyId = config('services.license.signing_key_id');
         $publicKey = config('services.license.signing_public_key');
 
-        if (!$publicKey) {
+        if (!$publicKey || empty($activeKeyId) || in_array($activeKeyId, $revokedKeyIds, true)) {
             return [];
         }
 

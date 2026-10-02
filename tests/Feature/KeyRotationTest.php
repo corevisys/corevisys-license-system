@@ -132,3 +132,53 @@ it('(D) rejects a response whose key_id is in the revocation list', function () 
     [$payload, $sig] = buildSignedPayloadParts($this->privateKeyPem);
     expect(OfflineLicenseVerification::verifySignature($payload, $sig, $this->keyId))->toBeFalse();
 });
+
+it('never lists a revoked key id in available_keys regardless of rotation_overlap_days or available_keys', function () {
+    $revokedKeyId = 'revoked-key-2026';
+    $activeKeyId = 'active-key-2026';
+
+    Config::set('services.license.signing_key_id', $activeKeyId);
+    Config::set('services.license.signing_public_key', base64_encode($this->publicKeyPem));
+    Config::set('services.license.signing_public_keys', [
+        $activeKeyId => base64_encode($this->publicKeyPem),
+        $revokedKeyId => base64_encode($this->publicKeyPem),
+    ]);
+    Config::set('services.license.rotation_overlap_days', 90);
+    Config::set('services.license.signing_revoked_key_ids', [$revokedKeyId]);
+
+    \Illuminate\Support\Facades\Cache::forget('license:public_key');
+
+    $meta = OfflineLicenseVerification::buildPublicKeyMetadata();
+    $availableKeyIds = array_column($meta['available_keys'], 'key_id');
+
+    expect($availableKeyIds)->toContain($activeKeyId)
+        ->and($availableKeyIds)->not->toContain($revokedKeyId);
+
+    $response = $this->getJson('/api/v1/license/public-key');
+    $response->assertStatus(200);
+
+    $bodyAvailableIds = array_column($response->json('available_keys'), 'key_id');
+    expect($bodyAvailableIds)->toContain($activeKeyId)
+        ->and($bodyAvailableIds)->not->toContain($revokedKeyId);
+});
+
+it('refuses to serve public-key when active key itself is revoked', function () {
+    Config::set('services.license.signing_key_id', $this->keyId);
+    Config::set('services.license.signing_public_key', base64_encode($this->publicKeyPem));
+    Config::set('services.license.signing_public_keys', [
+        $this->keyId => base64_encode($this->publicKeyPem),
+    ]);
+    Config::set('services.license.rotation_overlap_days', 90);
+    Config::set('services.license.signing_revoked_key_ids', [$this->keyId]);
+
+    \Illuminate\Support\Facades\Cache::forget('license:public_key');
+
+    $meta = OfflineLicenseVerification::buildPublicKeyMetadata();
+    expect($meta['key_id'])->toBeNull()
+        ->and($meta['public_key'])->toBeNull()
+        ->and($meta['available_keys'])->toBeEmpty();
+
+    $response = $this->getJson('/api/v1/license/public-key');
+    $response->assertStatus(503)
+        ->assertJsonPath('message', 'Public key not configured');
+});
