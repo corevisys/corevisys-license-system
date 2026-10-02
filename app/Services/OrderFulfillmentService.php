@@ -56,7 +56,7 @@ class OrderFulfillmentService
                 $order->update(['status' => OrderStatus::COMPLETED]);
 
                 if ($order->payment) {
-                    $paymentUpdates = ['status' => 'verified'];
+                    $paymentUpdates = ['status' => 'verified', 'applied_at' => \Carbon\Carbon::now()];
                     if (!empty($paymentData['transaction_id'])) {
                         $paymentUpdates['transaction_id'] = $paymentData['transaction_id'];
                     }

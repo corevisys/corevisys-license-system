@@ -707,70 +707,28 @@ class LicenseService
         return true;
     }
 
-    public function processRenewals()
+    /**
+     * Process due license renewals in batch.
+     * Delegates each license renewal to the single shared renewLicense() implementation.
+     */
+    public function processRenewals(): array
     {
-        // 1. Query licenses due for renewal
         $dueQuery = License::where('auto_renew', true)
             ->where('status', 'active')
+            ->where(function ($q) {
+                $q->whereNull('gateway_subscription_id')
+                  ->orWhere('gateway_subscription_id', 'not like', 'sub_%');
+            })
             ->whereNotNull('next_billing_at')
             ->where('next_billing_at', '<=', Carbon::now());
 
-        $productIds = (clone $dueQuery)
-            ->select('product_id')
-            ->distinct()
-            ->pluck('product_id')
-            ->filter()
-            ->all();
-
-        $prices = empty($productIds)
-            ? collect()
-            : ProductPrice::where('type', 'full')
-                ->whereIn('product_id', $productIds)
-                ->get()
-                ->keyBy('product_id');
-
         $results = ['success' => 0, 'failed' => 0];
 
-        $dueQuery->chunkById(500, function ($licenses) use (&$results, $prices) {
+        $dueQuery->chunkById(500, function ($licenses) use (&$results) {
             foreach ($licenses as $license) {
-                // Find the associated price to get billing period
-                $price = $prices->get($license->product_id);
-
-                // Billing period is stored as integer days. NULL = lifetime (no auto-renew).
-                $billingPeriod = $price ? (int) $price->billing_period : 30;
-
-                // Real Payment Logic (FIX-005 / BUG-001)
-                $paymentSuccess = $this->chargeRecurringSubscription($license);
-
-                if ($paymentSuccess) {
-                    // Extend Expiry by the configured billing period.
-                    $base = $license->expires_at ?? Carbon::now();
-                    $newExpiry = $base->copy()->addDays($billingPeriod);
-
-                    $license->update([
-                        'expires_at' => $newExpiry,
-                        'next_billing_at' => $newExpiry->copy()->addDays($billingPeriod),
-                        'last_check_at' => Carbon::now(),
-                        'grace_expires_at' => null,
-                        'status' => 'active',
-                    ]);
-
-                    \App\Services\AuditService::log('license_renewed', $license, ['period' => $billingPeriod]);
+                if ($this->renewLicense($license)) {
                     $results['success']++;
                 } else {
-                    // Set Grace Period on Failure and notify customer
-                    if (is_null($license->grace_expires_at)) {
-                        $license->update(['grace_expires_at' => Carbon::now()->addDays(7)]);
-                        \App\Services\AuditService::log('license_renewal_failed_grace_started', $license);
-                        $this->notifyCustomer($license, 'your recurring payment failed and a 7-day grace period has started');
-                    } elseif ($license->grace_expires_at->isPast()) {
-                        $license->update([
-                            'status' => 'expired',
-                            'auto_renew' => false,
-                        ]);
-                        \App\Services\AuditService::log('license_expired_grace_ended', $license);
-                        $this->notifyCustomer($license, 'your subscription grace period has ended and the license has expired');
-                    }
                     $results['failed']++;
                 }
             }
@@ -780,41 +738,147 @@ class LicenseService
     }
 
     /**
-     * Charge recurring subscription or verify new confirmed payment record for this renewal cycle.
-     * Enforces that initial purchase payments and prior cycle payments are never reused (FIX-005).
+     * Single shared implementation for renewing a license.
+     * Used by both the ProcessLicenseRenewal job and batch processRenewals().
      */
-    public function chargeRecurringSubscription(License $license): bool
+    public function renewLicense(License $license): bool
     {
-        // 1. If license has a gateway subscription, delegate to gateway recurring charge logic (e.g. bKash)
-        if ($license->gateway_subscription_id) {
+        // 1. Status whitelist guard (1c):
+        // Suspended, revoked, or cancelled licenses must NEVER be renewed or reactivated.
+        if (in_array($license->status, ['suspended', 'revoked', 'cancelled'], true)) {
+            \App\Services\AuditService::log('license_renewal_blocked_disallowed_status', $license, [
+                'current_status' => $license->status,
+            ]);
+            return false;
+        }
+
+        // Only active licenses or licenses within an active grace window may be renewed
+        $isGraceActive = $license->grace_expires_at && $license->grace_expires_at->isFuture();
+        if ($license->status !== 'active' && !$isGraceActive) {
+            \App\Services\AuditService::log('license_renewal_blocked_disallowed_status', $license, [
+                'current_status' => $license->status,
+            ]);
+            return false;
+        }
+
+        // 2. Stripe-managed guard (1e):
+        // Stripe subscriptions (sub_...) are managed by Stripe webhooks and must not be renewed by cron/job.
+        if ($license->gateway_subscription_id && str_starts_with($license->gateway_subscription_id, 'sub_')) {
+            return false;
+        }
+
+        // 3. Resolve billing period from subscription price (default 30 days)
+        $price = $license->product?->prices()->where('type', 'subscription')->first()
+            ?? $license->product?->prices()->where('type', 'full')->first();
+        $billingPeriod = $price && $price->billing_period ? (int) $price->billing_period : 30;
+
+        // 4. Payment qualification / charge (1d)
+        $paymentSuccess = $this->qualifyOrChargeRenewalPayment($license, $price);
+
+        if ($paymentSuccess) {
+            // 5. Success path (1f):
+            // next_billing_at is aligned with newExpiry (not two periods ahead)
+            $base = $license->expires_at ?? Carbon::now();
+            $newExpiry = $base->copy()->addDays($billingPeriod);
+
+            $license->update([
+                'expires_at' => $newExpiry,
+                'next_billing_at' => $newExpiry,
+                'last_check_at' => Carbon::now(),
+                'grace_expires_at' => null,
+                'status' => 'active',
+                'auto_renew' => true,
+            ]);
+
+            \App\Services\AuditService::log('license_renewed', $license, ['period' => $billingPeriod]);
+            return true;
+        }
+
+        // 6. Failure path (1a - Infinite grace bug fix):
+        // Grace period is granted ONCE, only when grace_expires_at is currently NULL.
+        if (is_null($license->grace_expires_at)) {
+            $license->update([
+                'grace_expires_at' => Carbon::now()->addDays(7),
+                'status' => 'active',
+            ]);
+            \App\Services\AuditService::log('license_renewal_failed_grace_started', $license);
+            $this->notifyCustomer($license, 'your recurring payment failed and a 7-day grace period has started');
+        } elseif ($license->grace_expires_at->isPast()) {
+            if ($license->status !== 'expired') {
+                $license->update([
+                    'status' => 'expired',
+                    'auto_renew' => false,
+                ]);
+                \App\Services\AuditService::log('license_expired_grace_ended', $license);
+                $this->notifyCustomer($license, 'your subscription grace period has ended and the license has expired');
+            }
+        }
+        // If grace is currently active (future), do not re-grant and do not re-notify
+
+        return false;
+    }
+
+    /**
+     * Charge recurring subscription or qualify an unconsumed verified payment record for this renewal cycle.
+     * Enforces explicit linkage to license_id, unique consumption via applied_at, and amount sufficiency (FIX-005 / 1d).
+     */
+    public function qualifyOrChargeRenewalPayment(License $license, ?ProductPrice $price = null): bool
+    {
+        // 1. If bKash recurring subscription, delegate to bKash recurring charge
+        if ($license->gateway_subscription_id && str_starts_with($license->gateway_subscription_id, 'bkash_')) {
             $renewalJob = new ProcessLicenseRenewal($license);
             if ($renewalJob->chargeRecurringSubscription()) {
                 return true;
             }
         }
 
-        // 2. Enforce real payment record confirmation belonging to THIS renewal cycle:
-        // Must never reuse the initial purchase payment or prior cycle payments.
-        // A qualifying renewal payment must:
-        //   a) Belong to the license's order and have status 'verified'
-        //   b) Be created at or after the license's expiry date (cleanly excludes the original
-        //      purchase payment which was created before the license ever expired)
-        if ($license->order_id) {
-            // The cycle anchor is the moment the license expired (or next_billing_at if set earlier)
-            $cycleAnchor = $license->expires_at ?? $license->next_billing_at;
-
-            $hasVerifiedRenewalPayment = Payment::where('order_id', $license->order_id)
-                ->where('status', 'verified')
-                ->when($cycleAnchor, fn ($q) => $q->where('created_at', '>=', $cycleAnchor))
-                ->exists();
-
-            if ($hasVerifiedRenewalPayment) {
-                return true;
-            }
+        // 2. Stripe subscription ID: handled by webhooks only
+        if ($license->gateway_subscription_id && str_starts_with($license->gateway_subscription_id, 'sub_')) {
+            return false;
         }
 
+        // 3. Strict qualification of renewal payment records (1d):
+        // Must be explicitly linked to this specific license: payments.license_id == $license->id
+        // Must NOT have been consumed: payments.applied_at IS NULL
+        // Must have status 'verified'
+        // Amount must be >= required license price for the period (currency-aware)
+        $requiredAmount = $price ? (float) $price->amount : 0.0;
+        $requiredCurrency = $price ? $price->currency : null;
+
+        $candidatePayment = Payment::where('license_id', $license->id)
+            ->whereNull('applied_at')
+            ->where('status', 'verified')
+            ->orderBy('id', 'asc')
+            ->first();
+
+        if ($candidatePayment) {
+            if ((float) $candidatePayment->amount < $requiredAmount) {
+                \Illuminate\Support\Facades\Log::warning('Renewal payment amount insufficient', [
+                    'license_id' => $license->id,
+                    'payment_id' => $candidatePayment->id,
+                    'payment_amount' => $candidatePayment->amount,
+                    'required_amount' => $requiredAmount,
+                ]);
+                return false;
+            }
+
+            // Mark consumed uniquely for this cycle
+            $candidatePayment->update([
+                'applied_at' => Carbon::now(),
+            ]);
+
+            return true;
+        }
 
         return false;
+    }
+
+    /**
+     * Backward-compatible alias for qualifyOrChargeRenewalPayment.
+     */
+    public function chargeRecurringSubscription(License $license): bool
+    {
+        return $this->qualifyOrChargeRenewalPayment($license);
     }
 
     /**

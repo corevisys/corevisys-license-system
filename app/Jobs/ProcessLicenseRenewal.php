@@ -24,68 +24,7 @@ class ProcessLicenseRenewal implements ShouldQueue
 
     public function handle(): void
     {
-        // Stripe billing is managed by the native subscription lifecycle and webhook events.
-        // The renewal job should not query Stripe for status-only success as a substitute for real billing.
-        $subscriptionId = $this->license->gateway_subscription_id;
-        if ($subscriptionId && str_starts_with($subscriptionId, 'sub_')) {
-            return;
-        }
-
-        // Resolve billing period (in days) from the product's subscription price.
-        $billingPeriod = 30;
-        $price = $this->license->product?->prices()->where('type', 'subscription')->first();
-        if ($price && $price->billing_period) {
-            $billingPeriod = (int) $price->billing_period;
-        }
-
-        $paymentSuccess = $this->chargeRecurringSubscription();
-
-        if ($paymentSuccess) {
-            $oldExpiry = $this->license->expires_at;
-
-            $base = $this->license->expires_at ?? Carbon::now();
-            $newExpiry = $base->copy()->addDays($billingPeriod);
-
-            $this->license->update([
-                'expires_at' => $newExpiry,
-                'next_billing_at' => $newExpiry->copy()->addDays($billingPeriod),
-                'last_check_at' => Carbon::now(),
-                'grace_expires_at' => null,
-                'status' => 'active',
-                'auto_renew' => true,
-            ]);
-
-            \App\Services\AuditService::log(
-                'subscription_renewed',
-                $this->license,
-                ['expires_at' => $oldExpiry],
-                ['expires_at' => $this->license->expires_at]
-            );
-        } else {
-            $shouldGrantGrace = is_null($this->license->grace_expires_at) || $this->license->grace_expires_at->isPast();
-
-            if ($shouldGrantGrace) {
-                $this->license->update([
-                    'grace_expires_at' => Carbon::now()->addDays(7),
-                    'status' => 'active',
-                ]);
-                $this->notifyCustomer('your recurring payment failed and a 7-day grace period has started');
-            }
-
-            if ($this->license->grace_expires_at && $this->license->grace_expires_at->isPast()) {
-                $this->license->update([
-                    'status' => 'expired',
-                    'auto_renew' => false,
-                ]);
-            }
-
-            \App\Services\AuditService::log(
-                'subscription_renewal_failed',
-                $this->license,
-                ['status' => 'active'],
-                ['grace_expires_at' => $this->license->grace_expires_at, 'status' => $this->license->status]
-            );
-        }
+        app(\App\Services\LicenseService::class)->renewLicense($this->license);
     }
 
     public function chargeRecurringSubscription(): bool
@@ -139,10 +78,12 @@ class ProcessLicenseRenewal implements ShouldQueue
             $order->payments()->updateOrCreate(
                 ['gateway' => 'bkash', 'transaction_id' => $paymentId],
                 [
+                    'license_id' => $this->license->id,
                     'user_id' => $order->user_id,
                     'order_id' => $order->id,
                     'amount' => $price->amount,
                     'status' => $completed ? 'verified' : 'failed',
+                    'applied_at' => $completed ? Carbon::now() : null,
                     'gateway_response' => $gatewayResponse,
                 ]
             );
