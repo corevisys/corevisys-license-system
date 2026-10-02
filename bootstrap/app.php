@@ -35,16 +35,21 @@ return Application::configure(basePath: dirname(__DIR__))
             // arrives through a load-balancer will use the LB's internal socket IP as
             // the "client" IP, causing ALL end-user clients to share one fallback-scan
             // rate-limit bucket after as few as 30 scans.
-            if (app()->environment('production', 'staging')) {
-                \Illuminate\Support\Facades\Log::error(
-                    'TRUSTED_PROXIES is not configured. IP-based rate limiting WILL be incorrect in production: ' .
-                    'all clients behind a load-balancer share one rate-limit bucket. ' .
-                    'Set TRUSTED_PROXIES to your load-balancer CIDRs, or "*" if the network layer handles spoofing.'
-                );
-            } elseif (!app()->environment('local', 'testing')) {
-                \Illuminate\Support\Facades\Log::warning(
-                    'TRUSTED_PROXIES is not set. IP-based rate limiting may be inaccurate.'
-                );
+            $currentEnv = env('APP_ENV', 'production');
+            if (in_array($currentEnv, ['production', 'staging'], true)) {
+                if (\Illuminate\Support\Facades\Facade::getFacadeApplication()) {
+                    \Illuminate\Support\Facades\Log::error(
+                        'TRUSTED_PROXIES is not configured. IP-based rate limiting WILL be incorrect in production: ' .
+                        'all clients behind a load-balancer share one rate-limit bucket. ' .
+                        'Set TRUSTED_PROXIES to your load-balancer CIDRs, or "*" if the network layer handles spoofing.'
+                    );
+                }
+            } elseif (!in_array($currentEnv, ['local', 'testing'], true)) {
+                if (\Illuminate\Support\Facades\Facade::getFacadeApplication()) {
+                    \Illuminate\Support\Facades\Log::warning(
+                        'TRUSTED_PROXIES is not set. IP-based rate limiting may be inaccurate.'
+                    );
+                }
             }
             $proxies = [];   // trust no proxies; use the actual socket IP
         }
