@@ -1623,5 +1623,124 @@ class ProcessRenewalsLiveTest extends TestCase
         // No payment failure or grace email sent
         Mail::assertNothingSent();
     }
+
+    public function test_cron_outage_long_unrenewed_license_anchors_expiry_to_now_giving_full_period(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-OUTAGE-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        // License stayed unrenewed for 60 days (e.g. system cron outage or delayed manual renewal)
+        $pastExpiry = Carbon::now()->subDays(60);
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'OUTAGE-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => $pastExpiry,
+            'next_billing_at' => $pastExpiry,
+        ]);
+
+        Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_outage_recovery',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+        $now = Carbon::now();
+        $this->assertTrue($service->renewLicense($license));
+
+        $license->refresh();
+        // Policy: max(expires_at, now) + 30 days gives a fresh 30-day window from now
+        $this->assertTrue($license->expires_at->isFuture(), 'New expiry must not be in the past despite 60-day outage');
+        $expectedMinExpiry = $now->copy()->addDays(29);
+        $expectedMaxExpiry = $now->copy()->addDays(31);
+        $this->assertTrue(
+            $license->expires_at->between($expectedMinExpiry, $expectedMaxExpiry),
+            'New expiry should be ~30 days from now'
+        );
+        $this->assertEquals($license->expires_at->toIso8601String(), $license->next_billing_at->toIso8601String());
+        $this->assertEquals('active', $license->status);
+    }
+
+    public function test_advance_renewal_with_future_expiry_preserves_remaining_days(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-ADVANCE-FUTURE-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        // License expires in 10 days
+        $futureExpiry = Carbon::now()->addDays(10);
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'ADVANCE-FUTURE-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => $futureExpiry,
+            'next_billing_at' => Carbon::now()->subMinute(), // due for renewal cycle
+        ]);
+
+        Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_advance_future',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+        $this->assertTrue($service->renewLicense($license));
+
+        $license->refresh();
+        // Policy: max(expires_at, now) where expires_at is future preserves the 10 remaining days + 30 new days = 40 days
+        $expectedExpiry = $futureExpiry->copy()->addDays(30);
+        $this->assertEquals($expectedExpiry->toIso8601String(), $license->expires_at->toIso8601String());
+        $this->assertEquals($license->expires_at->toIso8601String(), $license->next_billing_at->toIso8601String());
+    }
 }
 
