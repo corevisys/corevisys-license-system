@@ -508,11 +508,9 @@ PEM;
      */
     public function test_pulse_enforcement_mode_changes_fingerprint_mismatch_outcome(): void
     {
-        // Put grace deadline in the past so it cannot rescue strict mode.
-        config(['services.license.fingerprint_enforcement_deadline' => now()->subDay()->format('Y-m-d')]);
-        config(['services.license.fingerprint_grace_mode' => true]);
+        // --- with future grace deadline: missing fingerprint accepted ---
+        config(['services.license.fingerprint_enforcement_deadline' => now()->addDays(7)->format('Y-m-d')]);
 
-        // --- standard mode: missing fingerprint accepted ---
         [$standardLicense, $standardKey] = $this->createLicense(['bound_fingerprint' => 'device-fp']);
 
         $responseStandard = $this->postJson('/api/v1/license/pulse', [
@@ -528,7 +526,9 @@ PEM;
         // Pulse must NOT persist fingerprint_missing_grace (persistGrace=false)
         $this->assertFalse((bool) $standardLicense->fresh()->fingerprint_missing_grace);
 
-        // --- strict mode: missing fingerprint rejected after deadline ---
+        // --- with past deadline: missing fingerprint rejected ---
+        config(['services.license.fingerprint_enforcement_deadline' => now()->subDay()->format('Y-m-d')]);
+
         [$strictLicense, $strictKey] = $this->createLicense(['bound_fingerprint' => 'device-fp']);
 
         $responseStrict = $this->postJson('/api/v1/license/pulse', [

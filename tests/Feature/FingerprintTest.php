@@ -116,8 +116,13 @@ class FingerprintTest extends TestCase
         $this->assertEquals('Environment Fingerprint Mismatch', $result['message']);
     }
 
-    public function test_license_allows_missing_fingerprint_in_standard_mode()
+    public function test_license_rejects_missing_fingerprint_by_default_in_standard_mode(): void
     {
+        // No deadline set in config or database: enforcement is ON by default from day one
+        config()->set('services.license.fingerprint_enforcement_deadline', null);
+        \App\Models\SystemSetting::where('key', 'fingerprint_enforcement_deadline')->delete();
+        \Illuminate\Support\Facades\Cache::forget('system_setting_fingerprint_enforcement_deadline');
+
         $user = User::factory()->create();
         $product = Product::factory()->create();
         $order = \App\Models\Order::create([
@@ -145,7 +150,9 @@ class FingerprintTest extends TestCase
         $service = new LicenseService();
         $result = $service->activate('FPKEY_STANDARD', 'example.com', '1.1.1.1', null, 'standard');
 
-        $this->assertTrue($result['status']);
+        // Must reject missing fingerprint by default
+        $this->assertFalse($result['status']);
+        $this->assertSame('Environment Fingerprint Mismatch', $result['message']);
     }
 
     public function test_license_allows_missing_fingerprint_during_grace_window(): void
@@ -286,6 +293,23 @@ class FingerprintTest extends TestCase
             ['key' => 'fingerprint_enforcement_deadline'],
             ['value' => now()->subDays(5)->format('Y-m-d')]
         );
+        $this->assertFalse($service->fingerprintGraceWindowIsActive());
+    }
+
+    public function test_fingerprint_enforcement_works_with_config_cache(): void
+    {
+        // Simulate config:cache by setting static string deadline in config
+        $futureDate = now()->addDays(14)->format('Y-m-d');
+        config()->set('services.license.fingerprint_enforcement_deadline', $futureDate);
+        \App\Models\SystemSetting::where('key', 'fingerprint_enforcement_deadline')->delete();
+        \Illuminate\Support\Facades\Cache::forget('system_setting_fingerprint_enforcement_deadline');
+
+        $service = new LicenseService();
+        // With future deadline in config, grace is active
+        $this->assertTrue($service->fingerprintGraceWindowIsActive());
+
+        // When deadline is unset in cached config, enforcement is ON (grace is inactive)
+        config()->set('services.license.fingerprint_enforcement_deadline', null);
         $this->assertFalse($service->fingerprintGraceWindowIsActive());
     }
 }

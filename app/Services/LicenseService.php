@@ -527,10 +527,6 @@ class LicenseService
         }
 
         if ($fingerprint === null) {
-            if (!$this->shouldEnforceFingerprint($enforcementMode)) {
-                return true;
-            }
-
             $allowsMissing = $this->fingerprintGraceWindowIsActive();
             if ($persistGrace) {
                 $license->update(['fingerprint_missing_grace' => $allowsMissing]);
@@ -546,17 +542,13 @@ class LicenseService
 
     protected function shouldEnforceFingerprint(?string $mode): bool
     {
-        $normalizedMode = strtolower((string) ($mode ?? 'standard'));
+        $normalizedMode = strtolower((string) ($mode ?? 'active'));
 
-        return in_array($normalizedMode, ['strict', 'active'], true);
+        return !in_array($normalizedMode, ['disabled', 'none', 'off'], true);
     }
 
     public function fingerprintGraceWindowIsActive(): bool
     {
-        if (!(bool) config('services.license.fingerprint_grace_mode', true)) {
-            return false;
-        }
-
         $storedDeadline = \App\Models\SystemSetting::getCached('fingerprint_enforcement_deadline');
         $configuredDeadline = config('services.license.fingerprint_enforcement_deadline');
 
@@ -565,9 +557,13 @@ class LicenseService
             return false;
         }
 
-        $deadline = Carbon::parse($rawDeadline);
+        try {
+            $deadline = Carbon::parse($rawDeadline);
 
-        return now()->lt($deadline);
+            return now()->lt($deadline);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
