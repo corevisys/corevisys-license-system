@@ -856,13 +856,28 @@ class LicenseService
         $requiredAmount = $price ? (float) $price->amount : 0.0;
         $requiredCurrency = $price ? $price->currency : null;
 
-        $candidatePayment = Payment::where('license_id', $license->id)
-            ->whereNull('applied_at')
-            ->where('status', 'verified')
-            ->orderBy('id', 'asc')
-            ->first();
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($license, $requiredAmount, $requiredCurrency) {
+            $candidatePayment = Payment::where('license_id', $license->id)
+                ->whereNull('applied_at')
+                ->where('status', 'verified')
+                ->orderBy('id', 'asc')
+                ->lockForUpdate()
+                ->first();
 
-        if ($candidatePayment) {
+            if (! $candidatePayment) {
+                return false;
+            }
+
+            if ($requiredCurrency !== null && $candidatePayment->order && strtoupper($candidatePayment->order->currency) !== strtoupper($requiredCurrency)) {
+                \Illuminate\Support\Facades\Log::warning('Renewal payment currency mismatch', [
+                    'license_id' => $license->id,
+                    'payment_id' => $candidatePayment->id,
+                    'payment_currency' => $candidatePayment->order->currency,
+                    'required_currency' => $requiredCurrency,
+                ]);
+                return false;
+            }
+
             if ((float) $candidatePayment->amount < $requiredAmount) {
                 \Illuminate\Support\Facades\Log::warning('Renewal payment amount insufficient', [
                     'license_id' => $license->id,
@@ -879,9 +894,7 @@ class LicenseService
             ]);
 
             return true;
-        }
-
-        return false;
+        });
     }
 
     /**
