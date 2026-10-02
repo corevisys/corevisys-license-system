@@ -280,8 +280,8 @@ class DeactivationTest extends TestCase
             'product_code' => 'corevisys-crm',
         ]);
 
-        $response->assertStatus(403)
-            ->assertJson(['error_code' => 'unauthorised_domain']);
+        $response->assertStatus(409)
+            ->assertJson(['error_code' => 'already_deactivated']);
     }
 
     #[Test]
