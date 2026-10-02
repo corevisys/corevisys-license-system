@@ -119,6 +119,20 @@ class LicenseController extends Controller
             return response()->json(['status' => false, 'message' => 'License has been Suspended. Contact Support.'], 403);
         }
 
+        // Revoked and cancelled licenses must not pass any check.
+        // Generic response; real reason logged for operators.
+        if (in_array($license->status, ['revoked', 'cancelled'], true)) {
+            \Illuminate\Support\Facades\Log::warning('Check blocked: terminal license status', [
+                'license_id' => $license->id,
+                'status'     => $license->status,
+            ]);
+            return response()->json([
+                'status'     => false,
+                'message'    => 'Invalid License Key',
+                'error_code' => 'invalid_license_key',
+            ], 403);
+        }
+
         $requestFingerprint = $request->filled('fingerprint') ? $request->string('fingerprint')->toString() : null;
         $enforcementMode = $request->input('enforcement_mode');
 
@@ -206,6 +220,21 @@ class LicenseController extends Controller
         $requestFingerprint = $request->filled('fingerprint') ? $request->string('fingerprint')->toString() : null;
         $enforcementMode = $request->input('enforcement_mode');
 
+        // --- Terminal-status guard (before any side-effect) ---
+        // Suspended licenses fall through below for the 200-suspended path.
+        // Revoked and cancelled must never receive a 200 or update last_check_at.
+        if (in_array($license->status, ['revoked', 'cancelled'], true)) {
+            \Illuminate\Support\Facades\Log::warning('Pulse blocked: terminal license status', [
+                'license_id' => $license->id,
+                'status'     => $license->status,
+            ]);
+            return response()->json([
+                'status'     => false,
+                'message'    => 'Invalid License Key',
+                'error_code' => 'invalid_license_key',
+            ], 403);
+        }
+
         if (!$this->licenseService->validateFingerprintBinding($license, $requestFingerprint, $enforcementMode, false)) {
             \Illuminate\Support\Facades\Log::warning('Fingerprint mismatch during pulse', [
                 'license_id' => $license->id,
@@ -242,7 +271,7 @@ class LicenseController extends Controller
             }
         }
 
-        // Update last check (heartbeat only)
+        // Update last check (heartbeat only) — only AFTER status guards pass
         $license->update(['last_check_at' => now()]);
 
         if ($license->status === 'suspended') {

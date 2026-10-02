@@ -391,38 +391,65 @@ class LicenseService
             }
         }
 
-        if ($license->status === 'suspended') {
-            return ['status' => false, 'message' => 'License has been Suspended. Contact Support.'];
+        // --- Terminal-status guard (must run BEFORE any state-machine transition) ---
+        // Revoked, suspended, and cancelled licenses may NEVER be activated via the API.
+        // Return the generic error response to avoid leaking the real status to the caller;
+        // log the real reason for operators.
+        if (in_array($license->status, ['revoked', 'suspended', 'cancelled'], true)) {
+            Log::warning('Activation blocked: terminal license status', [
+                'license_id' => $license->id,
+                'status'     => $license->status,
+                'domain'     => $domain,
+                'ip'         => $ip,
+            ]);
+            return [
+                'status'     => false,
+                'message'    => 'Invalid License Key',
+                'error_code' => 'invalid_license_key',
+            ];
+        }
+
+        // Only 'inactive' (initial) and 'expired' (renewal / grace) may transition to active.
+        if ($license->status === 'expired') {
+            // Check grace period: if past expiry and no active grace, reject before transition
+            if ($license->expires_at && $license->expires_at->isPast()) {
+                if (!($license->grace_expires_at && $license->grace_expires_at->isFuture())) {
+                    // No grace window — reject, no state change needed (already expired)
+                    return ['status' => false, 'message' => 'License Expired'];
+                }
+                // In grace window — allow the transition to proceed below
+            }
         }
 
         if ($license->status !== 'active') {
-            // allow activation if 'inactive' (initial state) -> set to active
+            // 'inactive' -> 'active' (first activation)
+            // 'expired'  -> 'active' (renewal within grace window)
             try {
                 $this->stateMachine->transition($license, 'active');
             } catch (\Exception $e) {
-                return ['status' => false, 'message' => 'License is ' . $license->status . ' and cannot be activated.'];
+                Log::warning('State machine rejected activation transition', [
+                    'license_id' => $license->id,
+                    'from'       => $license->status,
+                    'error'      => $e->getMessage(),
+                ]);
+                return [
+                    'status'     => false,
+                    'message'    => 'Invalid License Key',
+                    'error_code' => 'invalid_license_key',
+                ];
             }
         }
 
-        if ($license->expires_at && $license->expires_at->isPast()) {
-            // Upgrade 4: Grace Period Check
-            if ($license->grace_expires_at && $license->grace_expires_at->isFuture()) {
-                // In Grace Period - Return Active but with warning?
-                // For now, let's treat it as valid but maybe return a flag (handled in response below is better, 
-                // but we need to prevent 'expired' status update here).
-                // Do Nothing, continue.
-            } else {
+        // Post-transition expiry guard (handles non-expired licenses that have an expiry clock)
+        if ($license->status === 'active' && $license->expires_at && $license->expires_at->isPast()) {
+            if (!($license->grace_expires_at && $license->grace_expires_at->isFuture())) {
                 try {
                     $this->stateMachine->transition($license, 'expired');
                 } catch (\Exception $e) {
-                    // already expired or suspended
+                    // already expired or transition not allowed
                 }
                 return ['status' => false, 'message' => 'License Expired'];
             }
-        }
-
-        if ($license->status === 'revoked') {
-            return ['status' => false, 'message' => 'License Revoked'];
         }
 
         // Restore limit if it was reset to 0
@@ -618,6 +645,19 @@ class LicenseService
     ): array {
         $normalizedDomain = $this->normalizeDomain($domain);
 
+        // 0. Terminal-status guard: revoked/suspended/cancelled licenses must not
+        //    have their status changed to 'inactive' via client deactivation.
+        //    We still allow the call to log/audit and clear binding rows (idempotent),
+        //    but we skip the state-machine transition at step 5.
+        $isTerminal = in_array($license->status, ['revoked', 'suspended', 'cancelled'], true);
+        if ($isTerminal) {
+            Log::warning('Deactivation called on terminal-status license', [
+                'license_id' => $license->id,
+                'status'     => $license->status,
+                'domain'     => $domain,
+            ]);
+        }
+
         // 1. Verify domain is authorised (has a successful activation history)
         $domainIsAuthorised = ($license->bound_domain && $this->normalizeDomain($license->bound_domain) === $normalizedDomain)
             || LicenseActivation::where('license_id', $license->id)
@@ -686,7 +726,7 @@ class LicenseService
             ->where('status', 'success')
             ->count();
 
-        if ($remainingBindings === 0) {
+        if ($remainingBindings === 0 && !$isTerminal) {
             try {
                 $this->stateMachine->transition($license, 'inactive');
             } catch (\Exception) {
