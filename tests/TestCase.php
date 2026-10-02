@@ -34,30 +34,30 @@ abstract class TestCase extends BaseTestCase
 
     protected function guardAgainstProductionDatabase(Application $app): void
     {
-        $connection = $app['config']->get('database.default');
-        $driver = $app['config']->get("database.connections.{$connection}.driver", $connection);
+        $connection = (string) $app['config']->get('database.default');
+        $driver = (string) $app['config']->get("database.connections.{$connection}.driver", $connection);
+        $dbName = (string) $app['config']->get("database.connections.{$connection}.database", '');
 
-        // SQLite (including :memory:) is always allowed.
-        if ($driver === 'sqlite' || in_array($connection, ['sqlite', 'sqlite_testing'], true)) {
+        $isSqlite = $driver === 'sqlite' || in_array($connection, ['sqlite', 'sqlite_testing'], true);
+        $isSqliteInMemory = $isSqlite && $dbName === ':memory:';
+        $nameEndsWithTest = str_ends_with($dbName, '_test');
+
+        if ($isSqliteInMemory || $nameEndsWithTest) {
             return;
         }
 
-        // For MySQL/PostgreSQL, database name MUST end with '_test'.
-        $dbName = (string) $app['config']->get("database.connections.{$connection}.database", '');
-
-        if (!str_ends_with($dbName, '_test')) {
-            throw new \RuntimeException(
-                PHP_EOL .
-                '╔══════════════════════════════════════════════════════════════╗' . PHP_EOL .
-                '║  ABORTING: refusing to run tests against a non-test DB!      ║' . PHP_EOL .
-                '║                                                              ║' . PHP_EOL .
-                '║  Connection : ' . str_pad($connection, 47) . '║' . PHP_EOL .
-                '║  Database   : ' . str_pad($dbName,     47) . '║' . PHP_EOL .
-                '║                                                              ║' . PHP_EOL .
-                '║  The database name must end with "_test" (e.g.              ║' . PHP_EOL .
-                '║  "corevisys_test"). Set DB_DATABASE in phpunit.xml or env.   ║' . PHP_EOL .
-                '╚══════════════════════════════════════════════════════════════╝' . PHP_EOL
-            );
-        }
+        throw new \RuntimeException(
+            PHP_EOL .
+            '╔══════════════════════════════════════════════════════════════╗' . PHP_EOL .
+            '║  ABORTING: refusing to run tests against a non-test DB!      ║' . PHP_EOL .
+            '║                                                              ║' . PHP_EOL .
+            '║  Connection : ' . str_pad($connection, 47) . '║' . PHP_EOL .
+            '║  Database   : ' . str_pad($dbName,     47) . '║' . PHP_EOL .
+            '║                                                              ║' . PHP_EOL .
+            '║  The database must be SQLite in-memory (:memory:) or its    ║' . PHP_EOL .
+            '║  name must end with "_test" (e.g. "corevisys_test").         ║' . PHP_EOL .
+            '║  Set DB_DATABASE in phpunit.xml or env.                      ║' . PHP_EOL .
+            '╚══════════════════════════════════════════════════════════════╝' . PHP_EOL
+        );
     }
 }
