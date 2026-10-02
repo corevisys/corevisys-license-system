@@ -23,11 +23,14 @@ class Payment extends Model
         'receipt_hash',
         'admin_notes',
         'verified_by',
+        'license_id',
+        'applied_at',
     ];
 
     protected $casts = [
         'gateway_response' => 'array',
         'amount' => 'decimal:2',
+        'applied_at' => 'datetime',
     ];
 
     public function order()
@@ -38,5 +41,10 @@ class Payment extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function license()
+    {
+        return $this->belongsTo(License::class);
     }
 }
