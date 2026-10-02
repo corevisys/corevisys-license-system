@@ -935,13 +935,36 @@ class LicenseService
             return false;
         }
 
-        // 3. Strict qualification of renewal payment records (1d):
+        // 3. Resolve price if not provided
+        if ($price === null) {
+            $product = $license->product;
+            if ($product && $product->relationLoaded('prices')) {
+                $price = $product->prices->firstWhere('type', 'subscription')
+                      ?? $product->prices->firstWhere('type', 'full');
+            } else {
+                $price = $product?->prices()->where('type', 'subscription')->first()
+                      ?? $product?->prices()->where('type', 'full')->first();
+            }
+        }
+
+        // Fail closed: if no price record can be resolved, or the price has no amount or currency
+        if (!$price || is_null($price->amount) || (float) $price->amount <= 0 || empty($price->currency)) {
+            Log::warning('Renewal payment qualification failed closed: missing or invalid price record', [
+                'license_id' => $license->id,
+                'has_price'  => (bool) $price,
+                'amount'     => $price?->amount,
+                'currency'   => $price?->currency,
+            ]);
+            return false;
+        }
+
+        // 4. Strict qualification of renewal payment records (1d):
         // Must be explicitly linked to this specific license: payments.license_id == $license->id
         // Must NOT have been consumed: payments.applied_at IS NULL
         // Must have status 'verified'
         // Amount must be >= required license price for the period (currency-aware)
-        $requiredAmount = $price ? (float) $price->amount : 0.0;
-        $requiredCurrency = $price ? $price->currency : null;
+        $requiredAmount = (float) $price->amount;
+        $requiredCurrency = $price->currency;
 
         return \Illuminate\Support\Facades\DB::transaction(function () use ($license, $requiredAmount, $requiredCurrency) {
             $candidatePayment = Payment::where('license_id', $license->id)

@@ -1068,5 +1068,158 @@ class ProcessRenewalsLiveTest extends TestCase
         // Second concurrent process attempting to qualify the same payment gets false
         $this->assertFalse($service->qualifyOrChargeRenewalPayment($license, $product->prices()->first()));
     }
+
+    public function test_renewal_fails_closed_when_price_cannot_be_resolved(): void
+    {
+        $user = User::factory()->create();
+        // Product has NO prices configured
+        $product = Product::factory()->create();
+
+        $order = Order::create([
+            'order_number' => 'ORD-NO-PRICE-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'NO-PRICE-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_no_price_pay',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+
+        // Must fail closed when price cannot be resolved
+        $this->assertFalse($service->qualifyOrChargeRenewalPayment($license, null));
+        $this->assertNull($payment->fresh()->applied_at);
+        $this->assertFalse($service->renewLicense($license));
+        $this->assertNull($payment->fresh()->applied_at);
+    }
+
+    public function test_renewal_fails_closed_when_price_has_no_amount(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $price = ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 0.0, // Invalid amount
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-ZERO-PRICE-1',
+            'user_id' => $user->id,
+            'total_amount' => 0,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'ZERO-PRICE-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_zero_price_pay',
+            'amount' => 0,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+
+        // Must fail closed when price amount is 0 or null
+        $this->assertFalse($service->qualifyOrChargeRenewalPayment($license, $price));
+        $this->assertNull($payment->fresh()->applied_at);
+        $this->assertFalse($service->renewLicense($license));
+        $this->assertNull($payment->fresh()->applied_at);
+    }
+
+    public function test_renewal_fails_closed_when_price_has_no_currency(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $price = ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50.0,
+            'currency' => '', // Empty currency
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-NO-CURR-PRICE-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'NO-CURR-PRICE-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_no_curr_price_pay',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+
+        // Must fail closed when currency is empty or missing
+        $this->assertFalse($service->qualifyOrChargeRenewalPayment($license, $price));
+        $this->assertNull($payment->fresh()->applied_at);
+        $this->assertFalse($service->renewLicense($license));
+        $this->assertNull($payment->fresh()->applied_at);
+    }
 }
 
