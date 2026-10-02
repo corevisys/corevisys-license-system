@@ -363,16 +363,29 @@ class LicenseService
         $license = $this->findByKey($key);
 
         if (!$license) {
-            return ['status' => false, 'message' => 'Invalid License Key'];
+            Log::warning('Unknown license key during activation', [
+                'domain' => $domain,
+                'ip'     => $ip,
+            ]);
+            return [
+                'status'     => false,
+                'message'    => 'Invalid License Key',
+                'error_code' => 'invalid_license_key',
+            ];
         }
 
-        if ($productCode !== null) {
+        if ($productCode !== null && $productCode !== '') {
             $expectedSlug = $license->product?->slug;
-            if ($expectedSlug !== null && $expectedSlug !== $productCode) {
+            if ($expectedSlug !== $productCode) {
+                Log::warning('Product code mismatch during license activation', [
+                    'license_id' => $license->id,
+                    'expected'   => $expectedSlug,
+                    'provided'   => $productCode,
+                ]);
                 return [
-                    'status' => false,
-                    'message' => 'License is not valid for product: ' . $productCode,
-                    'error_code' => 'product_code_mismatch',
+                    'status'     => false,
+                    'message'    => 'Invalid License Key',
+                    'error_code' => 'invalid_license_key',
                 ];
             }
         }
@@ -598,6 +611,19 @@ class LicenseService
                 ->exists();
 
         if (! $domainIsAuthorised) {
+            $previouslyDeactivated = LicenseActivation::where('license_id', $license->id)
+                ->where('request_domain', $domain)
+                ->where('failure_reason', 'Deactivated by client')
+                ->exists();
+
+            if ($previouslyDeactivated || ($license->status === 'inactive' && $license->bound_domain === null)) {
+                return [
+                    'status'     => false,
+                    'message'    => 'License is already deactivated for this domain.',
+                    'error_code' => 'already_deactivated',
+                ];
+            }
+
             $this->logActivation($license, $domain, $ip, 'failed', 'Deactivation: unauthorised domain');
             return [
                 'status'     => false,

@@ -168,13 +168,18 @@ class DeactivationTest extends TestCase
     }
 
     #[Test]
-    public function deactivation_returns_404_for_invalid_key(): void
+    public function deactivation_returns_403_for_invalid_key(): void
     {
         $this->postJson('/api/v1/license/deactivate', [
             'license_key'  => 'INVALID-KEY-0000',
             'domain'       => 'example.com',
             'ip'           => '1.2.3.4',
-        ])->assertStatus(404);
+        ])->assertStatus(403)
+          ->assertExactJson([
+              'status'     => false,
+              'message'    => 'Invalid License Key',
+              'error_code' => 'invalid_license_key',
+          ]);
     }
 
     #[Test]

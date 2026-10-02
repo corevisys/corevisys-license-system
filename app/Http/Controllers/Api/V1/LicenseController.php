@@ -64,12 +64,20 @@ class LicenseController extends Controller
         $license = $this->licenseService->findByKey($request->license_key);
 
         if (!$license) {
-            return response()->json(['status' => false, 'message' => 'Invalid License Key'], 403);
+            \Illuminate\Support\Facades\Log::warning('Unknown license key during check', [
+                'domain' => $request->domain,
+                'ip'     => $request->ip(),
+            ]);
+            return response()->json([
+                'status'     => false,
+                'message'    => 'Invalid License Key',
+                'error_code' => 'invalid_license_key',
+            ], 403);
         }
 
         if ($request->filled('product_code')) {
             $expectedSlug = $license->product?->slug;
-            if ($expectedSlug !== null && $expectedSlug !== $request->input('product_code')) {
+            if ($expectedSlug !== $request->input('product_code')) {
                 \Illuminate\Support\Facades\Log::warning('Product code mismatch during license check', [
                     'license_id' => $license->id,
                     'expected'   => $expectedSlug,
@@ -128,12 +136,19 @@ class LicenseController extends Controller
         $license = $this->licenseService->findByKey($request->license_key);
 
         if (!$license) {
-            return response()->json(['status' => false, 'message' => 'License Inactive/Invalid'], 403);
+            \Illuminate\Support\Facades\Log::warning('Unknown license key during pulse', [
+                'domain' => $request->domain,
+            ]);
+            return response()->json([
+                'status'     => false,
+                'message'    => 'Invalid License Key',
+                'error_code' => 'invalid_license_key',
+            ], 403);
         }
 
         if ($request->filled('product_code')) {
             $expectedSlug = $license->product?->slug;
-            if ($expectedSlug !== null && $expectedSlug !== $request->input('product_code')) {
+            if ($expectedSlug !== $request->input('product_code')) {
                 \Illuminate\Support\Facades\Log::warning('Product code mismatch during license pulse', [
                     'license_id' => $license->id,
                     'expected'   => $expectedSlug,
@@ -218,17 +233,21 @@ class LicenseController extends Controller
         $license = $this->licenseService->findByKey($request->license_key);
 
         if (! $license) {
+            \Illuminate\Support\Facades\Log::warning('Unknown license key during deactivate', [
+                'domain' => $request->domain,
+                'ip'     => $request->input('ip'),
+            ]);
             return response()->json([
                 'status'     => false,
                 'message'    => 'Invalid License Key',
-                'error_code' => 'license_not_found',
-            ], 404);
+                'error_code' => 'invalid_license_key',
+            ], 403);
         }
 
         // Optional product-code guard (same as activate/check/pulse)
         if ($request->filled('product_code')) {
             $expectedSlug = $license->product?->slug;
-            if ($expectedSlug !== null && $expectedSlug !== $request->input('product_code')) {
+            if ($expectedSlug !== $request->input('product_code')) {
                 \Illuminate\Support\Facades\Log::warning('Product code mismatch during license deactivate', [
                     'license_id' => $license->id,
                     'expected'   => $expectedSlug,
