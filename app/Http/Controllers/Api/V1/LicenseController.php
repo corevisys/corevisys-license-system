@@ -465,17 +465,18 @@ class LicenseController extends Controller
         $isGracePeriod = (bool) ($license->expires_at?->isPast() && $license->grace_expires_at?->isFuture());
 
         return [
-            'status' => $license->status,
-            'license_id' => (string) $license->id,
-            'product_code' => $product?->slug ?? (string) $license->product_id,
-            'license_type' => $license->type,
-            'expires_at' => $license->expires_at?->toIso8601String(),
-            'features' => [],
-            'issued_at' => now()->toIso8601String(),
+            'status'             => $license->status,
+            'license_id'         => (string) $license->id,
+            'product_code'       => $product?->slug ?? (string) $license->product_id,
+            'license_type'       => $license->type,
+            'expires_at'         => $license->expires_at?->toIso8601String(),
+            'bound_domain'       => $license->bound_domain,
+            'features'           => [],
+            'issued_at'          => now()->toIso8601String(),
             'offline_valid_until' => $offlineGrant
                 ? now()->addDays((int) config('license.offline_validity_days', 7))->toIso8601String()
                 : null,
-            'is_grace_period' => $isGracePeriod,
+            'is_grace_period'    => $isGracePeriod,
         ];
     }
 
