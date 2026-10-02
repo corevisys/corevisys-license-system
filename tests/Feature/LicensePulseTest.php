@@ -163,7 +163,8 @@ PEM;
         $response->assertStatus(403)
             ->assertJson([
                 'status' => false,
-                'message' => 'License Inactive/Invalid',
+                'message' => 'Invalid License Key',
+                'error_code' => 'invalid_license_key',
             ]);
     }
 
@@ -180,7 +181,8 @@ PEM;
         $response->assertStatus(403)
             ->assertJson([
                 'status' => false,
-                'message' => 'Environment Fingerprint Required or Mismatched',
+                'message' => 'Environment Fingerprint Mismatch',
+                'error_code' => 'fingerprint_mismatch',
             ]);
     }
 
@@ -217,7 +219,8 @@ PEM;
         $responseAfterDeadline->assertStatus(403)
             ->assertJson([
                 'status' => false,
-                'message' => 'Environment Fingerprint Required or Mismatched',
+                'message' => 'Environment Fingerprint Mismatch',
+                'error_code' => 'fingerprint_mismatch',
             ]);
     }
 
@@ -541,7 +544,8 @@ PEM;
         $responseStrict->assertStatus(403)
             ->assertJson([
                 'status'  => false,
-                'message' => 'Environment Fingerprint Required or Mismatched',
+                'message' => 'Environment Fingerprint Mismatch',
+                'error_code' => 'fingerprint_mismatch',
             ]);
 
         // Still must NOT have written fingerprint_missing_grace
