@@ -839,6 +839,11 @@ class LicenseService
                 return false;
             }
 
+            // Preserve eager-loaded product and prices relation to avoid N+1 queries in batch renewals
+            if ($license->relationLoaded('product')) {
+                $lockedLicense->setRelation('product', $license->product);
+            }
+
             // 1. Status whitelist guard (1c):
             // Suspended, revoked, or cancelled licenses must NEVER be renewed or reactivated.
             if (in_array($lockedLicense->status, ['suspended', 'revoked', 'cancelled'], true)) {
@@ -889,9 +894,13 @@ class LicenseService
 
             if ($paymentSuccess) {
                 // Success path (1f):
-                // next_billing_at is aligned with newExpiry (not two periods ahead)
-                // New expiry base: max(expires_at, now) to prevent past-expiry after cron outages
-                $base = ($lockedLicense->expires_at && $lockedLicense->expires_at->isFuture())
+                // New expiry base policy (Phase 8c Item 5):
+                // If expires_at + billingPeriod is still in the future, anchor to expires_at
+                // to maintain consistent cycle dates across continuous monthly/annual subscriptions.
+                // If the license stayed unrenewed for a prolonged period (cron outage / long lapse)
+                // such that expires_at + billingPeriod would already be in the past, anchor to now()
+                // to guarantee a full active billing window.
+                $base = ($lockedLicense->expires_at && $lockedLicense->expires_at->copy()->addDays($billingPeriod)->isFuture())
                     ? $lockedLicense->expires_at
                     : Carbon::now();
                 $newExpiry = $base->copy()->addDays($billingPeriod);
