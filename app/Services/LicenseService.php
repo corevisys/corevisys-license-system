@@ -832,88 +832,106 @@ class LicenseService
      */
     public function renewLicense(License $license): bool
     {
-        // 1. Status whitelist guard (1c):
-        // Suspended, revoked, or cancelled licenses must NEVER be renewed or reactivated.
-        if (in_array($license->status, ['suspended', 'revoked', 'cancelled'], true)) {
-            \App\Services\AuditService::log('license_renewal_blocked_disallowed_status', $license, [
-                'current_status' => $license->status,
-            ]);
-            return false;
-        }
-
-        // Only active licenses or licenses within an active grace window may be renewed
-        $isGraceActive = $license->grace_expires_at && $license->grace_expires_at->isFuture();
-        if ($license->status !== 'active' && !$isGraceActive) {
-            \App\Services\AuditService::log('license_renewal_blocked_disallowed_status', $license, [
-                'current_status' => $license->status,
-            ]);
-            return false;
-        }
-
-        // 2. Stripe-managed guard (1e):
-        // Stripe subscriptions (sub_...) are managed by Stripe webhooks and must not be renewed by cron/job.
-        if ($license->gateway_subscription_id && str_starts_with($license->gateway_subscription_id, 'sub_')) {
-            return false;
-        }
-
-        // 3. Resolve billing period from subscription price (default 30 days).
-        // Use the already-loaded prices collection when available (eager-load path) to avoid
-        // N+1 queries when processRenewals() iterates over a chunk of licenses.
-        $product = $license->product;
-        if ($product && $product->relationLoaded('prices')) {
-            $prices = $product->prices;   // Eloquent Collection (no new query)
-            $price  = $prices->firstWhere('type', 'subscription')
-                   ?? $prices->firstWhere('type', 'full');
-        } else {
-            $price = $product?->prices()->where('type', 'subscription')->first()
-                  ?? $product?->prices()->where('type', 'full')->first();
-        }
-        $billingPeriod = $price && $price->billing_period ? (int) $price->billing_period : 30;
-
-        // 4. Payment qualification / charge (1d)
-        $paymentSuccess = $this->qualifyOrChargeRenewalPayment($license, $price);
-
-        if ($paymentSuccess) {
-            // 5. Success path (1f):
-            // next_billing_at is aligned with newExpiry (not two periods ahead)
-            $base = $license->expires_at ?? Carbon::now();
-            $newExpiry = $base->copy()->addDays($billingPeriod);
-
-            $license->update([
-                'expires_at' => $newExpiry,
-                'next_billing_at' => $newExpiry,
-                'last_check_at' => Carbon::now(),
-                'grace_expires_at' => null,
-                'status' => 'active',
-                'auto_renew' => true,
-            ]);
-
-            \App\Services\AuditService::log('license_renewed', $license, ['period' => $billingPeriod]);
-            return true;
-        }
-
-        // 6. Failure path (1a - Infinite grace bug fix):
-        // Grace period is granted ONCE, only when grace_expires_at is currently NULL.
-        if (is_null($license->grace_expires_at)) {
-            $license->update([
-                'grace_expires_at' => Carbon::now()->addDays(7),
-                'status' => 'active',
-            ]);
-            \App\Services\AuditService::log('license_renewal_failed_grace_started', $license);
-            $this->notifyCustomer($license, 'your recurring payment failed and a 7-day grace period has started');
-        } elseif ($license->grace_expires_at->isPast()) {
-            if ($license->status !== 'expired') {
-                $license->update([
-                    'status' => 'expired',
-                    'auto_renew' => false,
-                ]);
-                \App\Services\AuditService::log('license_expired_grace_ended', $license);
-                $this->notifyCustomer($license, 'your subscription grace period has ended and the license has expired');
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($license) {
+            // Lock license row and re-fetch fresh state to prevent race conditions
+            $lockedLicense = License::where('id', $license->id)->lockForUpdate()->first();
+            if (!$lockedLicense) {
+                return false;
             }
-        }
-        // If grace is currently active (future), do not re-grant and do not re-notify
 
-        return false;
+            // 1. Status whitelist guard (1c):
+            // Suspended, revoked, or cancelled licenses must NEVER be renewed or reactivated.
+            if (in_array($lockedLicense->status, ['suspended', 'revoked', 'cancelled'], true)) {
+                \App\Services\AuditService::log('license_renewal_blocked_disallowed_status', $lockedLicense, [
+                    'current_status' => $lockedLicense->status,
+                ]);
+                return false;
+            }
+
+            // Only active licenses or licenses within an active grace window may be renewed
+            $isGraceActive = $lockedLicense->grace_expires_at && $lockedLicense->grace_expires_at->isFuture();
+            if ($lockedLicense->status !== 'active' && !$isGraceActive) {
+                \App\Services\AuditService::log('license_renewal_blocked_disallowed_status', $lockedLicense, [
+                    'current_status' => $lockedLicense->status,
+                ]);
+                return false;
+            }
+
+            // 2. Stripe-managed guard (1e):
+            // Stripe subscriptions (sub_...) are managed by Stripe webhooks and must not be renewed by cron/job.
+            if ($lockedLicense->gateway_subscription_id && str_starts_with($lockedLicense->gateway_subscription_id, 'sub_')) {
+                return false;
+            }
+
+            // 3. Race re-check: verify that the license is still due (next_billing_at <= now).
+            // If already renewed by another worker or not due, exit without entering the failure path.
+            if ($lockedLicense->next_billing_at && $lockedLicense->next_billing_at->isFuture()) {
+                return false;
+            }
+
+            // 4. Resolve billing period from subscription price (default 30 days).
+            // Use the already-loaded prices collection when available (eager-load path) to avoid
+            // N+1 queries when processRenewals() iterates over a chunk of licenses.
+            $product = $lockedLicense->product;
+            if ($product && $product->relationLoaded('prices')) {
+                $prices = $product->prices;   // Eloquent Collection (no new query)
+                $price  = $prices->firstWhere('type', 'subscription')
+                       ?? $prices->firstWhere('type', 'full');
+            } else {
+                $price = $product?->prices()->where('type', 'subscription')->first()
+                      ?? $product?->prices()->where('type', 'full')->first();
+            }
+            $billingPeriod = $price && $price->billing_period ? (int) $price->billing_period : 30;
+
+            // 5. Payment qualification / charge (1d)
+            // Marks the candidate payment applied in this same transaction
+            $paymentSuccess = $this->qualifyOrChargeRenewalPayment($lockedLicense, $price);
+
+            if ($paymentSuccess) {
+                // Success path (1f):
+                // next_billing_at is aligned with newExpiry (not two periods ahead)
+                // New expiry base: max(expires_at, now) to prevent past-expiry after cron outages
+                $base = ($lockedLicense->expires_at && $lockedLicense->expires_at->isFuture())
+                    ? $lockedLicense->expires_at
+                    : Carbon::now();
+                $newExpiry = $base->copy()->addDays($billingPeriod);
+
+                $lockedLicense->update([
+                    'expires_at' => $newExpiry,
+                    'next_billing_at' => $newExpiry,
+                    'last_check_at' => Carbon::now(),
+                    'grace_expires_at' => null,
+                    'status' => 'active',
+                    'auto_renew' => true,
+                ]);
+
+                \App\Services\AuditService::log('license_renewed', $lockedLicense, ['period' => $billingPeriod]);
+                return true;
+            }
+
+            // 6. Failure path (1a - Infinite grace bug fix):
+            // Grace period is granted ONCE, only when grace_expires_at is currently NULL.
+            if (is_null($lockedLicense->grace_expires_at)) {
+                $lockedLicense->update([
+                    'grace_expires_at' => Carbon::now()->addDays(7),
+                    'status' => 'active',
+                ]);
+                \App\Services\AuditService::log('license_renewal_failed_grace_started', $lockedLicense);
+                $this->notifyCustomer($lockedLicense, 'your recurring payment failed and a 7-day grace period has started');
+            } elseif ($lockedLicense->grace_expires_at->isPast()) {
+                if ($lockedLicense->status !== 'expired') {
+                    $lockedLicense->update([
+                        'status' => 'expired',
+                        'auto_renew' => false,
+                    ]);
+                    \App\Services\AuditService::log('license_expired_grace_ended', $lockedLicense);
+                    $this->notifyCustomer($lockedLicense, 'your subscription grace period has ended and the license has expired');
+                }
+            }
+            // If grace is currently active (future), do not re-grant and do not re-notify
+
+            return false;
+        });
     }
 
     /**

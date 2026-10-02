@@ -1551,5 +1551,77 @@ class ProcessRenewalsLiveTest extends TestCase
         $this->assertEquals($due->toIso8601String(), $license->expires_at->toIso8601String());
         $this->assertNotNull($license->grace_expires_at);
     }
+
+    public function test_two_sequential_renewals_with_stale_license_renews_once_without_grace_or_email(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-RACE-STALE-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $due = Carbon::now()->subMinute();
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'RACE-STALE-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => $due,
+            'next_billing_at' => $due,
+        ]);
+
+        // One verified unconsumed payment for this cycle
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_race_stale_pay',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+
+        // Keep a stale in-memory instance whose next_billing_at is still in the past
+        $staleLicense = clone $license;
+        $this->assertTrue($staleLicense->next_billing_at->isPast());
+
+        // First call: succeeds and consumes the payment
+        $firstResult = $service->renewLicense($staleLicense);
+        $this->assertTrue($firstResult, 'First renewal must succeed');
+        $this->assertNotNull($payment->fresh()->applied_at);
+
+        // Second call with stale instance: must NOT renew, must NOT start grace period, must NOT email
+        $secondResult = $service->renewLicense($staleLicense);
+        $this->assertFalse($secondResult, 'Second renewal with stale license must return false');
+
+        $license->refresh();
+        $this->assertNull($license->grace_expires_at, 'Second stale renewal must not enter grace period');
+        $this->assertEquals('active', $license->status);
+        $this->assertTrue($license->next_billing_at->isFuture());
+
+        // No payment failure or grace email sent
+        Mail::assertNothingSent();
+    }
 }
 
