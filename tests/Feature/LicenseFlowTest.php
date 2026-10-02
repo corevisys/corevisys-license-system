@@ -66,14 +66,26 @@ class LicenseFlowTest extends TestCase
 
         $checkResponse->assertStatus(200);
 
-        // 6. Verify Failure (Different Domain)
-        $failResponse = $this->postJson('/api/v1/license/activate', [
+        // 6. Verify Activation Limit Failure (Different Domain exceeds limit)
+        $failActivate = $this->postJson('/api/v1/license/activate', [
             'license_key' => $licenseKey,
-            'domain' => 'thief.com', // Mismatch
+            'domain' => 'thief.com',
             'ip' => $ip
         ]);
 
-        $failResponse->assertStatus(403)
+        $failActivate->assertStatus(409)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'activation_limit_exceeded')
+            ->assertDontSee($domain);
+
+        // 7. Verify Check Failure on Unauthorised Domain
+        $failCheck = $this->postJson('/api/v1/license/check', [
+            'license_key' => $licenseKey,
+            'domain' => 'thief.com',
+            'ip' => $ip
+        ]);
+
+        $failCheck->assertStatus(403)
             ->assertJsonPath('status', false)
             ->assertJsonPath('error_code', 'unauthorised_domain')
             ->assertJsonPath('message', 'Unauthorized Domain')

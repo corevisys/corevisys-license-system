@@ -163,17 +163,16 @@ class ResponseLeakSecurityTest extends TestCase
             'status' => 'success',
         ]);
 
-        // 1. Activate - Domain mismatch
+        // 1. Activate - Domain exceeds limit
         $activateDomain = $this->postJson('/api/v1/license/activate', [
             'license_key' => $this->validKey,
             'domain' => 'unauthorised-domain.com',
             'ip' => '5.6.7.8',
             'fingerprint' => 'bound-fp-hash-1234',
         ]);
-        $activateDomain->assertStatus(403)
+        $activateDomain->assertStatus(409)
             ->assertJsonPath('status', false)
-            ->assertJsonPath('error_code', 'unauthorised_domain')
-            ->assertJsonPath('message', 'Unauthorized Domain')
+            ->assertJsonPath('error_code', 'activation_limit_exceeded')
             ->assertDontSee('secret-bound-domain.com');
 
         // 2. Check - Domain mismatch
@@ -238,5 +237,40 @@ class ResponseLeakSecurityTest extends TestCase
             ->assertJsonPath('error_code', 'fingerprint_mismatch')
             ->assertJsonPath('message', 'Environment Fingerprint Mismatch')
             ->assertDontSee('bound-fp-hash-1234');
+    }
+
+    #[Test]
+    public function test_activation_returns_409_when_limit_is_exceeded(): void
+    {
+        // License with limit 2
+        $this->license->update(['activation_limit' => 2, 'bound_domain' => null]);
+
+        // 1st domain
+        $res1 = $this->postJson('/api/v1/license/activate', [
+            'license_key' => $this->validKey,
+            'domain' => 'node1.test',
+            'ip' => '1.1.1.1',
+        ]);
+        $res1->assertStatus(200);
+
+        // 2nd domain
+        $res2 = $this->postJson('/api/v1/license/activate', [
+            'license_key' => $this->validKey,
+            'domain' => 'node2.test',
+            'ip' => '1.1.1.2',
+        ]);
+        $res2->assertStatus(200);
+
+        // 3rd domain: limit reached
+        $res3 = $this->postJson('/api/v1/license/activate', [
+            'license_key' => $this->validKey,
+            'domain' => 'node3.test',
+            'ip' => '1.1.1.3',
+        ]);
+
+        $res3->assertStatus(409)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'activation_limit_exceeded')
+            ->assertJsonPath('message', 'Activation limit reached (2). Please upgrade or reset licenses.');
     }
 }

@@ -40,7 +40,8 @@ class LicenseController extends Controller
         );
 
         if (!$result['status']) {
-            return response()->json($result, 403);
+            $httpStatus = ($result['error_code'] ?? '') === 'activation_limit_exceeded' ? 409 : 403;
+            return response()->json($result, $httpStatus);
         }
 
         return $this->successResponse($this->licensePayload($result['license']));

@@ -445,20 +445,6 @@ class LicenseService
 
         if (!$isExistingBinding && $activeBindingsCount >= $activationLimit) {
             $this->logActivation($license, $domain, $ip, 'failed', 'Activation Limit Reached');
-            // A brand-new domain that conflicts with the bound domain is reported as
-            // a domain mismatch (clearer for the client), otherwise as a limit error.
-            if ($license->bound_domain && $this->normalizeDomain($license->bound_domain) !== $this->normalizeDomain($domain)) {
-                Log::warning('Domain mismatch during license activation', [
-                    'license_id'     => $license->id,
-                    'bound_domain'   => $license->bound_domain,
-                    'request_domain' => $domain,
-                ]);
-                return [
-                    'status'     => false,
-                    'message'    => 'Unauthorized Domain',
-                    'error_code' => 'unauthorised_domain',
-                ];
-            }
             return [
                 'status'     => false,
                 'message'    => "Activation limit reached ({$activationLimit}). Please upgrade or reset licenses.",
