@@ -52,9 +52,10 @@ class SubscriptionRenewalTest extends TestCase
             'type' => 'subscription',
             'status' => 'active',
             'auto_renew' => true,
+            'created_at' => Carbon::now()->subDays(30),
             'expires_at' => Carbon::now()->subMinute(), // Expired
             'next_billing_at' => Carbon::now()->subMinute(), // Due
-            'gateway_subscription_id' => 'sub_123'
+            'gateway_subscription_id' => 'sub_123',
         ]);
 
         // 2. Run Service directly (or command)

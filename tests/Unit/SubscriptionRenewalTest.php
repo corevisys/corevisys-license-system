@@ -5,6 +5,7 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductPrice;
 use App\Services\LicenseService;
+use Carbon\Carbon;
 
 test('renewal logic uses billing period in days', function () {
     $product = Product::factory()->create();
@@ -16,21 +17,25 @@ test('renewal logic uses billing period in days', function () {
         'billing_period' => 365,
     ]);
 
+    // License was created 30 days ago; it expired yesterday
     $license = License::factory()->create([
-        'product_id' => $product->id,
-        'auto_renew' => true,
-        'status' => 'active',
-        'next_billing_at' => now()->subDay(),
-        'expires_at' => now()->subDay(),
+        'product_id'     => $product->id,
+        'auto_renew'     => true,
+        'status'         => 'active',
+        'created_at'     => Carbon::now()->subDays(30),
+        'next_billing_at' => Carbon::now()->subDay(),
+        'expires_at'     => Carbon::now()->subDay(),
     ]);
 
+    // Renewal-cycle payment recorded now (strictly after license creation)
     Payment::create([
-        'order_id' => $license->order_id,
-        'user_id' => $license->user_id,
-        'gateway' => 'manual',
+        'order_id'       => $license->order_id,
+        'user_id'        => $license->user_id,
+        'gateway'        => 'manual',
         'transaction_id' => 'tx_unit_test',
-        'amount' => 100,
-        'status' => 'verified',
+        'amount'         => 100,
+        'status'         => 'verified',
+        'created_at'     => Carbon::now(),
     ]);
 
     $service = new LicenseService();

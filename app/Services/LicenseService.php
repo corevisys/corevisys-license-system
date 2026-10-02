@@ -758,16 +758,18 @@ class LicenseService
                     \App\Services\AuditService::log('license_renewed', $license, ['period' => $billingPeriod]);
                     $results['success']++;
                 } else {
-                    // Upgrade 4: Set Grace Period on Failure
+                    // Set Grace Period on Failure and notify customer
                     if (is_null($license->grace_expires_at)) {
                         $license->update(['grace_expires_at' => Carbon::now()->addDays(7)]);
                         \App\Services\AuditService::log('license_renewal_failed_grace_started', $license);
+                        $this->notifyCustomer($license, 'your recurring payment failed and a 7-day grace period has started');
                     } elseif ($license->grace_expires_at->isPast()) {
                         $license->update([
                             'status' => 'expired',
                             'auto_renew' => false,
                         ]);
                         \App\Services\AuditService::log('license_expired_grace_ended', $license);
+                        $this->notifyCustomer($license, 'your subscription grace period has ended and the license has expired');
                     }
                     $results['failed']++;
                 }
@@ -778,8 +780,8 @@ class LicenseService
     }
 
     /**
-     * Charge recurring subscription or verify existing confirmed payment record.
-     * Replaces simulated billing stub (BUG-001 / FIX-005).
+     * Charge recurring subscription or verify new confirmed payment record for this renewal cycle.
+     * Enforces that initial purchase payments and prior cycle payments are never reused (FIX-005).
      */
     public function chargeRecurringSubscription(License $license): bool
     {
@@ -791,19 +793,50 @@ class LicenseService
             }
         }
 
-        // 2. Enforce real payment record confirmation:
-        // Must have an associated order with a verified payment record.
+        // 2. Enforce real payment record confirmation belonging to THIS renewal cycle:
+        // Must never reuse the initial purchase payment or prior cycle payments.
+        // A qualifying renewal payment must:
+        //   a) Belong to the license's order and have status 'verified'
+        //   b) Be created at or after the license's expiry date (cleanly excludes the original
+        //      purchase payment which was created before the license ever expired)
         if ($license->order_id) {
-            $hasVerifiedPayment = Payment::where('order_id', $license->order_id)
+            // The cycle anchor is the moment the license expired (or next_billing_at if set earlier)
+            $cycleAnchor = $license->expires_at ?? $license->next_billing_at;
+
+            $hasVerifiedRenewalPayment = Payment::where('order_id', $license->order_id)
                 ->where('status', 'verified')
+                ->when($cycleAnchor, fn ($q) => $q->where('created_at', '>=', $cycleAnchor))
                 ->exists();
 
-            if ($hasVerifiedPayment) {
+            if ($hasVerifiedRenewalPayment) {
                 return true;
             }
         }
 
+
         return false;
+    }
+
+    /**
+     * Notify customer on subscription renewal lifecycle events (failure / grace / expiration).
+     * Uses a proper Mailable so Mail::fake() intercepts it correctly in tests.
+     */
+    public function notifyCustomer(License $license, string $reason): void
+    {
+        $user = $license->user;
+        if (!$user || empty($user->email)) {
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Mail::to($user->email)
+                ->send(new \App\Mail\SubscriptionBillingNotice($license, $reason));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Subscription billing notification failed', [
+                'license_id' => $license->id,
+                'error'      => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
