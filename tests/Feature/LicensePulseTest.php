@@ -320,10 +320,12 @@ PEM;
             'domain' => 'pulse.test',
         ]);
 
+        // SEC-8b: revoked licenses return the generic error to avoid status leakage.
         $response->assertStatus(403)
             ->assertJson([
-                'status' => false,
-                'message' => 'License REVOKED',
+                'status'     => false,
+                'message'    => 'Invalid License Key',
+                'error_code' => 'invalid_license_key',
             ]);
     }
 
