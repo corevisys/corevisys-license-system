@@ -486,9 +486,15 @@ class LicenseController extends Controller
             abort(503, 'License signing is temporarily unavailable.');
         }
 
+        $keyId = config('services.license.signing_key_id');
+        if (empty($keyId)) {
+            \Log::error('LICENSE_SIGNING_KEY_ID is missing in configuration');
+            abort(503, 'License signing is temporarily unavailable.');
+        }
+
         return [
             'signature' => base64_encode($signature),
-            'key_id' => config('services.license.signing_key_id', 'corevisys-key-1'),
+            'key_id' => $keyId,
             'algorithm' => OfflineLicenseVerification::SIGNING_ALGORITHM,
         ];
     }

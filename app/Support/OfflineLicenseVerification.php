@@ -22,7 +22,7 @@ final class OfflineLicenseVerification
     public static function buildPublicKeyMetadata(): array
     {
         $keyMap = self::availableKeys();
-        $activeKeyId = config('services.license.signing_key_id', 'corevisys-key-1');
+        $activeKeyId = config('services.license.signing_key_id');
 
         $activePublicKey = $keyMap[$activeKeyId] ?? config('services.license.signing_public_key');
 
@@ -76,7 +76,7 @@ final class OfflineLicenseVerification
             return $configuredKeys;
         }
 
-        $activeKeyId = config('services.license.signing_key_id', 'corevisys-key-1');
+        $activeKeyId = config('services.license.signing_key_id');
         $publicKey = config('services.license.signing_public_key');
 
         if (!$publicKey) {

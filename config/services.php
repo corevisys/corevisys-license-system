@@ -40,7 +40,7 @@ return [
         'signing_private_key' => env('LICENSE_SIGNING_PRIVATE_KEY'),
         'signing_public_key' => env('LICENSE_SIGNING_PUBLIC_KEY'),
         'signing_public_keys' => env('LICENSE_SIGNING_PUBLIC_KEYS') ? json_decode(env('LICENSE_SIGNING_PUBLIC_KEYS'), true) : [],
-        'signing_key_id' => env('LICENSE_SIGNING_KEY_ID', 'corevisys-key-1'),
+        'signing_key_id' => env('LICENSE_SIGNING_KEY_ID'),
         'rotation_overlap_days' => env('LICENSE_ROTATION_OVERLAP_DAYS', 30),
         'signing_revoked_key_ids' => env('LICENSE_SIGNING_REVOKED_KEY_IDS') ? array_filter(array_map('trim', explode(',', env('LICENSE_SIGNING_REVOKED_KEY_IDS')))) : [],
         'fingerprint_enforcement_deadline' => env('FINGERPRINT_ENFORCEMENT_DEADLINE', null),

@@ -30,6 +30,10 @@ class AppServiceProvider extends ServiceProvider
         // Prohibit destructive database commands (migrate:fresh, migrate:refresh, migrate:reset, db:wipe) in production
         DB::prohibitDestructiveCommands($this->app->isProduction());
 
+        if ($this->app->isProduction() && empty(config('services.license.signing_key_id'))) {
+            throw new \RuntimeException('LICENSE_SIGNING_KEY_ID is missing or not configured in production.');
+        }
+
         if (config('app.env') !== 'local') {
             URL::forceScheme('https');
         }

@@ -76,6 +76,7 @@ PEM;
 
         config()->set('services.license.signing_private_key', base64_encode($privateKeyPem));
         config()->set('services.license.signing_public_key', base64_encode($publicKeyPem));
+        config()->set('services.license.signing_key_id', 'test-signing-key-1');
 
         $service = new \App\Services\LicenseService();
         $license = $service->createLicense($order, $product);
