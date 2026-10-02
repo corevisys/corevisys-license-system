@@ -27,9 +27,16 @@ class PaymentController extends Controller
         $payment->admin_notes = $request->input('notes');
 
         if ($request->action === 'approve') {
-            app(OrderFulfillmentService::class)->fulfillOrder($payment->order);
+            $result = app(OrderFulfillmentService::class)->fulfillOrder($payment->order);
             $payment->refresh();
+            $licenseId = $payment->license_id
+                ?? ($result['license']?->id ?? null)
+                ?? $payment->order?->license_id;
+
             $payment->update([
+                'status' => 'verified',
+                'license_id' => $licenseId,
+                'applied_at' => $payment->applied_at ?? \Carbon\Carbon::now(),
                 'verified_by' => $request->user()->id,
                 'admin_notes' => $request->input('notes'),
             ]);

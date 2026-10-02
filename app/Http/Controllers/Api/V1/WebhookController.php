@@ -195,7 +195,7 @@ class WebhookController extends Controller
 
         $license->update([
             'expires_at'       => $newExpiry,
-            'next_billing_at'  => $newExpiry->copy()->addDays($billingPeriod),
+            'next_billing_at'  => $newExpiry,
             'grace_expires_at' => null,
             'status'           => 'active',
             'auto_renew'       => true,
@@ -204,19 +204,34 @@ class WebhookController extends Controller
 
         $invoiceId     = $invoice->id ?? null;
         $paymentIntent = $invoice->payment_intent ?? null;
+        $trxId         = $paymentIntent ?: $invoiceId;
 
-        if ($invoiceId || $paymentIntent) {
-            $q = \App\Models\Payment::query();
-            if ($invoiceId) {
-                $q->where('transaction_id', $invoiceId);
-            }
-            if ($paymentIntent) {
-                $q->orWhere('transaction_id', $paymentIntent);
-            }
-            $q->where('order_id', $license->order_id)->update([
-                'status' => 'verified',
+        if ($trxId) {
+            $updated = \App\Models\Payment::where(function ($query) use ($invoiceId, $paymentIntent) {
+                if ($invoiceId) {
+                    $query->where('transaction_id', $invoiceId);
+                }
+                if ($paymentIntent) {
+                    $query->orWhere('transaction_id', $paymentIntent);
+                }
+            })->where('order_id', $license->order_id)->update([
+                'status'     => 'verified',
                 'license_id' => $license->id,
+                'applied_at' => now(),
             ]);
+
+            if ($updated === 0) {
+                \App\Models\Payment::create([
+                    'order_id'       => $license->order_id,
+                    'user_id'        => $license->user_id,
+                    'license_id'     => $license->id,
+                    'gateway'        => 'stripe',
+                    'transaction_id' => $trxId,
+                    'amount'         => isset($invoice->amount_paid) ? ((float) $invoice->amount_paid) / 100 : ($price ? (float) $price->amount : 0.0),
+                    'status'         => 'verified',
+                    'applied_at'     => now(),
+                ]);
+            }
         }
     }
 

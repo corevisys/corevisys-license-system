@@ -72,6 +72,10 @@ class OrderFulfillmentService
                     $order->payment->update($paymentUpdates);
                 }
 
+                if ($license instanceof \App\Models\License) {
+                    $order->payments()->whereNull('license_id')->update(['license_id' => $license->id]);
+                }
+
                 Log::info("OrderFulfillment: Fulfillment complete for Order {$order->order_number}", [
                     'license_id' => $license->id,
                     'api_token_generated' => (bool) $apiToken,

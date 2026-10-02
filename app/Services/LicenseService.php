@@ -902,11 +902,11 @@ class LicenseService
                 return false;
             }
 
-            if ($requiredCurrency !== null && $candidatePayment->order && strtoupper($candidatePayment->order->currency) !== strtoupper($requiredCurrency)) {
+            if ($requiredCurrency !== null && (! $candidatePayment->order || strtoupper($candidatePayment->order->currency) !== strtoupper($requiredCurrency))) {
                 \Illuminate\Support\Facades\Log::warning('Renewal payment currency mismatch', [
                     'license_id' => $license->id,
                     'payment_id' => $candidatePayment->id,
-                    'payment_currency' => $candidatePayment->order->currency,
+                    'payment_currency' => $candidatePayment->order?->currency,
                     'required_currency' => $requiredCurrency,
                 ]);
                 return false;
