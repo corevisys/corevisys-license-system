@@ -981,6 +981,7 @@ class LicenseService
         // Must NOT have been consumed: payments.applied_at IS NULL
         // Must have status 'verified'
         // Amount must be >= required license price for the period (currency-aware)
+        // Units: Major currency units (decimal(10,2)) across price->amount, order->total_amount, and payment->amount.
         $requiredAmount = (float) $price->amount;
         $requiredCurrency = $price->currency;
 
@@ -1006,12 +1007,24 @@ class LicenseService
                 return false;
             }
 
-            if ((float) $candidatePayment->amount < $requiredAmount) {
+            // Coupon / Discount handling:
+            // When an explicit renewal order is created with an authorized discount/coupon,
+            // the authorized renewal total ($order->total_amount) governs if lower than the catalog price.
+            $order = $candidatePayment->order;
+            $orderDiscountedAmount = ($order && $order->license_id === $license->id && $order->type === 'renewal' && (float) $order->total_amount > 0)
+                ? (float) $order->total_amount
+                : null;
+
+            $effectiveRequiredAmount = ($orderDiscountedAmount !== null && $orderDiscountedAmount < $requiredAmount)
+                ? $orderDiscountedAmount
+                : $requiredAmount;
+
+            if ((float) $candidatePayment->amount < $effectiveRequiredAmount) {
                 \Illuminate\Support\Facades\Log::warning('Renewal payment amount insufficient', [
                     'license_id' => $license->id,
                     'payment_id' => $candidatePayment->id,
                     'payment_amount' => $candidatePayment->amount,
-                    'required_amount' => $requiredAmount,
+                    'required_amount' => $effectiveRequiredAmount,
                 ]);
                 return false;
             }

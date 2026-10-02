@@ -1742,5 +1742,189 @@ class ProcessRenewalsLiveTest extends TestCase
         $this->assertEquals($expectedExpiry->toIso8601String(), $license->expires_at->toIso8601String());
         $this->assertEquals($license->expires_at->toIso8601String(), $license->next_billing_at->toIso8601String());
     }
+
+    public function test_discounted_renewal_order_qualifies_when_payment_covers_discounted_amount(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $initialOrder = Order::create([
+            'order_number' => 'ORD-INIT-DISC-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $initialOrder->id,
+            'license_key_hash' => hash('sha256', 'DISCOUNT-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        // Customer placed a renewal order with a coupon: total_amount is $35 instead of $50
+        $discountedOrder = Order::create([
+            'order_number' => 'ORD-DISCOUNT-1',
+            'user_id' => $user->id,
+            'license_id' => $license->id,
+            'total_amount' => 35,
+            'currency' => 'USD',
+            'status' => 'completed',
+            'type' => 'renewal',
+        ]);
+
+        $payment = Payment::create([
+            'order_id' => $discountedOrder->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_discount_paid_35',
+            'amount' => 35,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+        $this->assertTrue($service->renewLicense($license));
+
+        $license->refresh();
+        $this->assertTrue($license->expires_at->isFuture());
+        $this->assertNotNull($payment->fresh()->applied_at);
+    }
+
+    public function test_discounted_renewal_rejected_when_payment_is_below_discounted_amount(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $initialOrder = Order::create([
+            'order_number' => 'ORD-INIT-DISC-2',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $initialOrder->id,
+            'license_key_hash' => hash('sha256', 'DISCOUNT-SHORT-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        // Renewal order authorized for $35
+        $discountedOrder = Order::create([
+            'order_number' => 'ORD-DISCOUNT-SHORT-1',
+            'user_id' => $user->id,
+            'license_id' => $license->id,
+            'total_amount' => 35,
+            'currency' => 'USD',
+            'status' => 'completed',
+            'type' => 'renewal',
+        ]);
+
+        // Payment only paid $20
+        $payment = Payment::create([
+            'order_id' => $discountedOrder->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_discount_paid_20',
+            'amount' => 20,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+        $this->assertFalse($service->renewLicense($license));
+
+        $this->assertNull($payment->fresh()->applied_at);
+    }
+
+    public function test_qualify_renewal_payment_directly_rejects_currency_mismatch(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $price = ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $initialOrder = Order::create([
+            'order_number' => 'ORD-INIT-EUR-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $initialOrder->id,
+            'license_key_hash' => hash('sha256', 'DIRECT-CURR-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        $eurOrder = Order::create([
+            'order_number' => 'ORD-EUR-1',
+            'user_id' => $user->id,
+            'license_id' => $license->id,
+            'total_amount' => 50,
+            'currency' => 'EUR', // Mismatched currency
+            'status' => 'completed',
+            'type' => 'renewal',
+        ]);
+
+        $payment = Payment::create([
+            'order_id' => $eurOrder->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_eur_pay',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+        $this->assertFalse($service->qualifyOrChargeRenewalPayment($license, $price));
+        $this->assertNull($payment->fresh()->applied_at);
+    }
 }
 
