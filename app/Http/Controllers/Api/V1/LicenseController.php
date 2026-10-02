@@ -502,7 +502,7 @@ class LicenseController extends Controller
             'bound_domain'       => $license->bound_domain,
             'features'           => [],
             'issued_at'          => now()->toIso8601String(),
-            'offline_valid_until' => $offlineGrant
+            'offline_valid_until' => ($offlineGrant && $license->status === 'active')
                 ? now()->addDays((int) config('license.offline_validity_days', 7))->toIso8601String()
                 : null,
             'is_grace_period'    => $isGracePeriod,

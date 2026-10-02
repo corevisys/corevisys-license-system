@@ -482,12 +482,36 @@ Route::middleware('auth')->group(function () {
             return back()->with('error', 'Renewal price not found. Please purchase a new license from the store.');
         }
 
+        // Validate coupon and compute total server-side (never from request input)
+        $coupon = $request->input('coupon');
+        $discountPercent = 0;
+        if ($coupon) {
+            $validCoupons = config('services.coupons', [
+                'SAVE20' => 20,
+                'SAVE50' => 50,
+                'FREE100' => 100,
+            ]);
+
+            if (!isset($validCoupons[$coupon])) {
+                return back()->with('error', 'Invalid or expired coupon code.');
+            }
+
+            $discountPercent = (float) $validCoupons[$coupon];
+        }
+
+        $computedTotal = round((float) $price->amount * (1 - ($discountPercent / 100)), 2);
+
+        // Policy for total 0 (100% coupon): require explicit admin approval or reject; no automatic free renewal
+        if ($computedTotal <= 0) {
+            return back()->with('error', '100% discount renewal orders require explicit administrator approval.');
+        }
+
         // Create Renewal Order
         $order = \App\Models\Order::create([
             'order_number' => 'ORD-REN-' . strtoupper(\Illuminate\Support\Str::random(10)),
             'user_id' => auth()->id(),
             'license_id' => $license->id,
-            'total_amount' => $price->amount,
+            'total_amount' => $computedTotal,
             'currency' => $price->currency,
             'status' => 'awaiting_payment',
             'payment_method' => 'online', // Auto-assume online for auto-redirect
@@ -498,7 +522,7 @@ Route::middleware('auth')->group(function () {
         \App\Models\OrderItem::create([
             'order_id' => $order->id,
             'product_id' => $license->product_id,
-           'product_price_id' => $price->id,
+            'product_price_id' => $price->id,
             'price' => $price->amount,
             'license_type' => $price->type,
         ]);
@@ -512,7 +536,7 @@ Route::middleware('auth')->group(function () {
             'license_id' => $license->id,
             'user_id' => auth()->id(),
             'gateway' => $gateway,
-            'amount' => $price->amount,
+            'amount' => $computedTotal,
             'status' => 'pending',
         ]);
 
