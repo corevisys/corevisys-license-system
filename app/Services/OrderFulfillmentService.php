@@ -80,6 +80,12 @@ class OrderFulfillmentService
                     $order->payments()->whereNull('license_id')->update(['license_id' => $license->id]);
                 }
 
+                // Any verified payment associated with this order must be marked applied (consumed)
+                // so it can never be reused to renew the license.
+                $order->payments()->where('status', 'verified')->whereNull('applied_at')->update([
+                    'applied_at' => \Carbon\Carbon::now(),
+                ]);
+
                 Log::info("OrderFulfillment: Fulfillment complete for Order {$order->order_number}", [
                     'license_id' => $license->id,
                     'api_token_generated' => (bool) $apiToken,

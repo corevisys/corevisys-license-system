@@ -1280,5 +1280,276 @@ class ProcessRenewalsLiveTest extends TestCase
         $this->assertTrue($service->chargeRecurringSubscription($license));
         $this->assertNotNull($shortPayment->fresh()->applied_at);
     }
+
+    public function test_proof_stripe_checkout_initial_payment_cannot_renew_subscription(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $price = ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-STRIPE-PROOF-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'pending',
+            'payment_method' => 'online',
+        ]);
+        $order->items()->create([
+            'product_id' => $product->id,
+            'product_price_id' => $price->id,
+            'price' => 50,
+            'license_type' => 'subscription',
+        ]);
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'user_id' => $user->id,
+            'gateway' => 'stripe',
+            'transaction_id' => 'cs_test_session_123',
+            'amount' => 50,
+            'status' => 'pending',
+        ]);
+
+        // Fulfill Stripe order as done in WebhookController / success callback
+        $fulfillment = app(\App\Services\OrderFulfillmentService::class)->fulfillOrder($order, [
+            'transaction_id' => 'pi_stripe_test_123',
+            'gateway_response' => ['id' => 'cs_test_session_123'],
+        ]);
+
+        $license = $fulfillment['license'];
+        $this->assertInstanceOf(License::class, $license);
+        $this->assertEquals('subscription', $license->type);
+        $payment->refresh();
+        $this->assertEquals('verified', $payment->status);
+        $this->assertNotNull($payment->applied_at, 'Stripe initial payment must have applied_at set upon fulfillment');
+
+        // Advance time to next_billing_at
+        $due = Carbon::now()->subMinute();
+        $license->update([
+            'status' => 'active',
+            'expires_at' => $due,
+            'next_billing_at' => $due,
+        ]);
+
+        // Run renewal command
+        $results = (new LicenseService())->processRenewals();
+        $this->assertSame(0, $results['success']);
+        $this->assertSame(1, $results['failed']);
+
+        $license->refresh();
+        $this->assertEquals($due->toIso8601String(), $license->expires_at->toIso8601String());
+        $this->assertNotNull($license->grace_expires_at);
+    }
+
+    public function test_proof_bkash_checkout_initial_payment_cannot_renew_subscription(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $price = ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'BDT',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-BKASH-PROOF-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'BDT',
+            'status' => 'pending',
+            'payment_method' => 'online',
+        ]);
+        $order->items()->create([
+            'product_id' => $product->id,
+            'product_price_id' => $price->id,
+            'price' => 50,
+            'license_type' => 'subscription',
+        ]);
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'user_id' => $user->id,
+            'gateway' => 'bkash',
+            'transaction_id' => 'TR0012PAYMENT_PROOF',
+            'amount' => 50,
+            'status' => 'pending',
+            'gateway_response' => ['paymentID' => 'TR0012PAYMENT_PROOF'],
+        ]);
+
+        // Fulfill via bKash flow as done in callback / execute
+        $fulfillment = app(\App\Services\OrderFulfillmentService::class)->fulfillOrder($order, [
+            'transaction_id' => 'TRX_BKASH_9999',
+            'gateway_response' => ['paymentID' => 'TR0012PAYMENT_PROOF', 'trxID' => 'TRX_BKASH_9999', 'transactionStatus' => 'Completed'],
+        ]);
+
+        $license = $fulfillment['license'];
+        $this->assertInstanceOf(License::class, $license);
+        $this->assertEquals('subscription', $license->type);
+        $payment->refresh();
+        $this->assertEquals('verified', $payment->status);
+        $this->assertNotNull($payment->applied_at, 'bKash initial payment must have applied_at set upon fulfillment');
+
+        // Advance time to next_billing_at
+        $due = Carbon::now()->subMinute();
+        $license->update([
+            'status' => 'active',
+            'expires_at' => $due,
+            'next_billing_at' => $due,
+        ]);
+
+        // Run renewal command
+        $results = (new LicenseService())->processRenewals();
+        $this->assertSame(0, $results['success']);
+        $this->assertSame(1, $results['failed']);
+
+        $license->refresh();
+        $this->assertEquals($due->toIso8601String(), $license->expires_at->toIso8601String());
+        $this->assertNotNull($license->grace_expires_at);
+    }
+
+    public function test_proof_offline_receipt_admin_approval_initial_payment_cannot_renew_subscription(): void
+    {
+        Mail::fake();
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $customer = User::factory()->create();
+        $product = Product::factory()->create();
+        $price = ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-OFFLINE-PROOF-1',
+            'user_id' => $customer->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'awaiting_payment',
+            'payment_method' => 'offline',
+        ]);
+        $order->items()->create([
+            'product_id' => $product->id,
+            'product_price_id' => $price->id,
+            'price' => 50,
+            'license_type' => 'subscription',
+        ]);
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'user_id' => $customer->id,
+            'gateway' => 'offline',
+            'amount' => 50,
+            'status' => 'pending',
+            'payment_proof_path' => 'receipts/test.png',
+        ]);
+
+        // Admin approves payment
+        $response = $this->actingAs($admin)->postJson("/api/v1/admin/payments/{$payment->id}/verify", [
+            'action' => 'approve',
+            'notes' => 'Proof verified',
+        ]);
+        $response->assertStatus(200);
+
+        $payment->refresh();
+        $this->assertEquals('verified', $payment->status);
+        $this->assertNotNull($payment->applied_at, 'Offline receipt payment must have applied_at set upon admin approval');
+
+        $license = License::where('order_id', $order->id)->first();
+        $this->assertNotNull($license);
+        $this->assertEquals('subscription', $license->type);
+
+        // Advance time to next_billing_at
+        $due = Carbon::now()->subMinute();
+        $license->update([
+            'status' => 'active',
+            'expires_at' => $due,
+            'next_billing_at' => $due,
+        ]);
+
+        // Run renewal command
+        $results = (new LicenseService())->processRenewals();
+        $this->assertSame(0, $results['success']);
+        $this->assertSame(1, $results['failed']);
+
+        $license->refresh();
+        $this->assertEquals($due->toIso8601String(), $license->expires_at->toIso8601String());
+        $this->assertNotNull($license->grace_expires_at);
+    }
+
+    public function test_proof_order_fulfillment_initial_payment_cannot_renew_subscription(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $price = ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-FULFILL-PROOF-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'pending',
+        ]);
+        $order->items()->create([
+            'product_id' => $product->id,
+            'product_price_id' => $price->id,
+            'price' => 50,
+            'license_type' => 'subscription',
+        ]);
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_direct_fulfill',
+            'amount' => 50,
+            'status' => 'pending',
+        ]);
+
+        $fulfillment = app(\App\Services\OrderFulfillmentService::class)->fulfillOrder($order);
+        $license = $fulfillment['license'];
+        $this->assertInstanceOf(License::class, $license);
+        $this->assertEquals('subscription', $license->type);
+
+        $payment->refresh();
+        $this->assertEquals('verified', $payment->status);
+        $this->assertNotNull($payment->applied_at, 'Order fulfillment must mark payment applied_at');
+
+        // Advance time to next_billing_at
+        $due = Carbon::now()->subMinute();
+        $license->update([
+            'status' => 'active',
+            'expires_at' => $due,
+            'next_billing_at' => $due,
+        ]);
+
+        // Run renewal command
+        $results = (new LicenseService())->processRenewals();
+        $this->assertSame(0, $results['success']);
+        $this->assertSame(1, $results['failed']);
+
+        $license->refresh();
+        $this->assertEquals($due->toIso8601String(), $license->expires_at->toIso8601String());
+        $this->assertNotNull($license->grace_expires_at);
+    }
 }
 
