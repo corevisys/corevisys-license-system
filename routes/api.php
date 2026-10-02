@@ -18,7 +18,7 @@ Route::prefix('v1')->middleware([\App\Http\Middleware\CheckClientVersion::class]
     Route::post('/license/check', [LicenseController::class, 'check'])->middleware('throttle:activation');
     Route::post('/license/pulse', [LicenseController::class, 'pulse'])->middleware('throttle:pulse');
     Route::post('/license/deactivate', [LicenseController::class, 'deactivate'])->middleware('throttle:deactivation');
-    Route::get('/license/public-key', [LicenseController::class, 'publicKey']);
+    Route::get('/license/public-key', [LicenseController::class, 'publicKey'])->middleware('throttle:public-key');
     Route::post('/license/history', [LicenseController::class, 'history'])->middleware(['auth:sanctum', 'throttle:pulse']);
 });
 

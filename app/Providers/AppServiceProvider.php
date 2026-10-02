@@ -76,5 +76,9 @@ class AppServiceProvider extends ServiceProvider
         \Illuminate\Support\Facades\RateLimiter::for('deactivation', function (\Illuminate\Http\Request $request) {
             return \Illuminate\Cache\RateLimiting\Limit::perHour(10)->by($request->ip());
         });
+
+        \Illuminate\Support\Facades\RateLimiter::for('public-key', function (\Illuminate\Http\Request $request) {
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(60)->by($request->ip());
+        });
     }
 }
