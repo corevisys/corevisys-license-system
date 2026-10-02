@@ -1009,10 +1009,11 @@ class LicenseService
 
     /**
      * Backward-compatible alias for qualifyOrChargeRenewalPayment.
+     * Resolves the subscription price and enforces amount sufficiency and currency matching.
      */
-    public function chargeRecurringSubscription(License $license): bool
+    public function chargeRecurringSubscription(License $license, ?ProductPrice $price = null): bool
     {
-        return $this->qualifyOrChargeRenewalPayment($license);
+        return $this->qualifyOrChargeRenewalPayment($license, $price);
     }
 
     /**

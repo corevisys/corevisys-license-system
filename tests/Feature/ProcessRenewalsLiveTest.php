@@ -1221,5 +1221,64 @@ class ProcessRenewalsLiveTest extends TestCase
         $this->assertFalse($service->renewLicense($license));
         $this->assertNull($payment->fresh()->applied_at);
     }
+
+    public function test_charge_recurring_subscription_alias_enforces_price_and_currency_checks(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        ProductPrice::create([
+            'product_id' => $product->id,
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-ALIAS-TEST-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'ALIAS-KEY-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        // 1. Payment with insufficient amount (25 < 50)
+        $shortPayment = Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_alias_short',
+            'amount' => 25,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+
+        // Must reject insufficient payment even when called via alias
+        $this->assertFalse($service->chargeRecurringSubscription($license));
+        $this->assertNull($shortPayment->fresh()->applied_at);
+
+        // Update payment to full required amount
+        $shortPayment->update(['amount' => 50]);
+
+        // Must now succeed and consume payment
+        $this->assertTrue($service->chargeRecurringSubscription($license));
+        $this->assertNotNull($shortPayment->fresh()->applied_at);
+    }
 }
 
