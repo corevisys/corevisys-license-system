@@ -50,7 +50,8 @@ class LicenseFlowTest extends TestCase
         $activateResponse = $this->postJson('/api/v1/license/activate', [
             'license_key' => $licenseKey,
             'domain' => $domain,
-            'ip' => $ip
+            'ip' => $ip,
+            'product_code' => $product->slug,
         ]);
 
         $activateResponse->assertStatus(200)
@@ -61,7 +62,8 @@ class LicenseFlowTest extends TestCase
         $checkResponse = $this->postJson('/api/v1/license/check', [
             'license_key' => $licenseKey,
             'domain' => $domain,
-            'ip' => '1.2.3.4'
+            'ip' => '1.2.3.4',
+            'product_code' => $product->slug,
         ]);
 
         $checkResponse->assertStatus(200);
@@ -70,7 +72,8 @@ class LicenseFlowTest extends TestCase
         $failActivate = $this->postJson('/api/v1/license/activate', [
             'license_key' => $licenseKey,
             'domain' => 'thief.com',
-            'ip' => $ip
+            'ip' => $ip,
+            'product_code' => $product->slug,
         ]);
 
         $failActivate->assertStatus(409)
@@ -82,7 +85,8 @@ class LicenseFlowTest extends TestCase
         $failCheck = $this->postJson('/api/v1/license/check', [
             'license_key' => $licenseKey,
             'domain' => 'thief.com',
-            'ip' => $ip
+            'ip' => $ip,
+            'product_code' => $product->slug,
         ]);
 
         $failCheck->assertStatus(403)

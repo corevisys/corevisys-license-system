@@ -376,7 +376,7 @@ class LicenseService
 
         if ($productCode !== null && $productCode !== '') {
             $expectedSlug = $license->product?->slug;
-            if ($expectedSlug !== $productCode) {
+            if ($expectedSlug !== null && $expectedSlug !== $productCode) {
                 Log::warning('Product code mismatch during license activation', [
                     'license_id' => $license->id,
                     'expected'   => $expectedSlug,

@@ -162,4 +162,185 @@ class CrossProductLicenseTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('status', 'success');
     }
+
+    public function test_activation_rejects_missing_product_code(): void
+    {
+        $response = $this->postJson('/api/v1/license/activate', [
+            'license_key' => $this->licenseKey,
+            'domain' => 'client-app.test',
+            'ip' => '127.0.0.1',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'invalid_license_key');
+    }
+
+    public function test_activation_rejects_empty_product_code(): void
+    {
+        $response = $this->postJson('/api/v1/license/activate', [
+            'license_key' => $this->licenseKey,
+            'domain' => 'client-app.test',
+            'ip' => '127.0.0.1',
+            'product_code' => '',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'invalid_license_key');
+    }
+
+    public function test_check_rejects_missing_product_code(): void
+    {
+        $this->license->update([
+            'bound_domain' => 'client-app.test',
+            'bound_ip' => '127.0.0.1',
+            'activated_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/v1/license/check', [
+            'license_key' => $this->licenseKey,
+            'domain' => 'client-app.test',
+            'ip' => '127.0.0.1',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'invalid_license_key');
+    }
+
+    public function test_check_rejects_empty_product_code(): void
+    {
+        $this->license->update([
+            'bound_domain' => 'client-app.test',
+            'bound_ip' => '127.0.0.1',
+            'activated_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/v1/license/check', [
+            'license_key' => $this->licenseKey,
+            'domain' => 'client-app.test',
+            'ip' => '127.0.0.1',
+            'product_code' => '',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'invalid_license_key');
+    }
+
+    public function test_pulse_rejects_missing_product_code(): void
+    {
+        $this->license->update([
+            'bound_domain' => 'client-app.test',
+            'bound_ip' => '127.0.0.1',
+            'activated_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/v1/license/pulse', [
+            'license_key' => $this->licenseKey,
+            'domain' => 'client-app.test',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'invalid_license_key');
+    }
+
+    public function test_pulse_rejects_empty_product_code(): void
+    {
+        $this->license->update([
+            'bound_domain' => 'client-app.test',
+            'bound_ip' => '127.0.0.1',
+            'activated_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/v1/license/pulse', [
+            'license_key' => $this->licenseKey,
+            'domain' => 'client-app.test',
+            'product_code' => '',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'invalid_license_key');
+    }
+
+    public function test_deactivate_rejects_missing_product_code(): void
+    {
+        $this->license->update([
+            'bound_domain' => 'client-app.test',
+            'bound_ip' => '127.0.0.1',
+            'activated_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/v1/license/deactivate', [
+            'license_key' => $this->licenseKey,
+            'domain' => 'client-app.test',
+            'ip' => '127.0.0.1',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'invalid_license_key');
+    }
+
+    public function test_deactivate_rejects_empty_product_code(): void
+    {
+        $this->license->update([
+            'bound_domain' => 'client-app.test',
+            'bound_ip' => '127.0.0.1',
+            'activated_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/v1/license/deactivate', [
+            'license_key' => $this->licenseKey,
+            'domain' => 'client-app.test',
+            'ip' => '127.0.0.1',
+            'product_code' => '',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'invalid_license_key');
+    }
+
+    public function test_deactivate_rejects_mismatched_product_code(): void
+    {
+        $this->license->update([
+            'bound_domain' => 'client-app.test',
+            'bound_ip' => '127.0.0.1',
+            'activated_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/v1/license/deactivate', [
+            'license_key' => $this->licenseKey,
+            'domain' => 'client-app.test',
+            'ip' => '127.0.0.1',
+            'product_code' => 'expensive-erp',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'invalid_license_key');
+    }
+
+    public function test_deactivate_accepts_matching_product_code(): void
+    {
+        $this->license->update([
+            'bound_domain' => 'client-app.test',
+            'bound_ip' => '127.0.0.1',
+            'activated_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/v1/license/deactivate', [
+            'license_key' => $this->licenseKey,
+            'domain' => 'client-app.test',
+            'ip' => '127.0.0.1',
+            'product_code' => 'cheap-crm',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('status', 'success');
+    }
 }

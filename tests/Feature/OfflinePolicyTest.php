@@ -86,6 +86,7 @@ PEM;
             'license_key' => $rawKey,
             'domain' => 'offline.com',
             'ip' => '127.0.0.1',
+            'product_code' => $product->slug,
         ]);
 
         $response->assertStatus(200)
@@ -126,6 +127,7 @@ PEM;
             'license_key' => $license->raw_key,
             'domain' => 'offline.com',
             'ip' => '127.0.0.1',
+            'product_code' => $product->slug,
         ]);
 
         $response->assertStatus(503)

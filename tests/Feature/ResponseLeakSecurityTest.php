@@ -169,6 +169,7 @@ class ResponseLeakSecurityTest extends TestCase
             'domain' => 'unauthorised-domain.com',
             'ip' => '5.6.7.8',
             'fingerprint' => 'bound-fp-hash-1234',
+            'product_code' => 'sec-product',
         ]);
         $activateDomain->assertStatus(409)
             ->assertJsonPath('status', false)
@@ -181,6 +182,7 @@ class ResponseLeakSecurityTest extends TestCase
             'domain' => 'unauthorised-domain.com',
             'ip' => '5.6.7.8',
             'fingerprint' => 'bound-fp-hash-1234',
+            'product_code' => 'sec-product',
         ]);
         $checkDomain->assertStatus(403)
             ->assertJsonPath('status', false)
@@ -193,6 +195,7 @@ class ResponseLeakSecurityTest extends TestCase
             'license_key' => $this->validKey,
             'domain' => 'unauthorised-domain.com',
             'fingerprint' => 'bound-fp-hash-1234',
+            'product_code' => 'sec-product',
         ]);
         $pulseDomain->assertStatus(403)
             ->assertJsonPath('status', false)
@@ -206,6 +209,7 @@ class ResponseLeakSecurityTest extends TestCase
             'domain' => 'secret-bound-domain.com',
             'ip' => '1.2.3.4',
             'fingerprint' => 'wrong-fp-hash',
+            'product_code' => 'sec-product',
         ]);
         $activateFp->assertStatus(403)
             ->assertJsonPath('status', false)
@@ -219,6 +223,7 @@ class ResponseLeakSecurityTest extends TestCase
             'domain' => 'secret-bound-domain.com',
             'ip' => '1.2.3.4',
             'fingerprint' => 'wrong-fp-hash',
+            'product_code' => 'sec-product',
         ]);
         $checkFp->assertStatus(403)
             ->assertJsonPath('status', false)
@@ -231,6 +236,7 @@ class ResponseLeakSecurityTest extends TestCase
             'license_key' => $this->validKey,
             'domain' => 'secret-bound-domain.com',
             'fingerprint' => 'wrong-fp-hash',
+            'product_code' => 'sec-product',
         ]);
         $pulseFp->assertStatus(403)
             ->assertJsonPath('status', false)
@@ -250,6 +256,7 @@ class ResponseLeakSecurityTest extends TestCase
             'license_key' => $this->validKey,
             'domain' => 'node1.test',
             'ip' => '1.1.1.1',
+            'product_code' => 'sec-product',
         ]);
         $res1->assertStatus(200);
 
@@ -258,6 +265,7 @@ class ResponseLeakSecurityTest extends TestCase
             'license_key' => $this->validKey,
             'domain' => 'node2.test',
             'ip' => '1.1.1.2',
+            'product_code' => 'sec-product',
         ]);
         $res2->assertStatus(200);
 
@@ -266,6 +274,7 @@ class ResponseLeakSecurityTest extends TestCase
             'license_key' => $this->validKey,
             'domain' => 'node3.test',
             'ip' => '1.1.1.3',
+            'product_code' => 'sec-product',
         ]);
 
         $res3->assertStatus(409)
