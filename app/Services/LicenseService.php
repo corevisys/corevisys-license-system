@@ -447,10 +447,23 @@ class LicenseService
             $this->logActivation($license, $domain, $ip, 'failed', 'Activation Limit Reached');
             // A brand-new domain that conflicts with the bound domain is reported as
             // a domain mismatch (clearer for the client), otherwise as a limit error.
-            if ($license->bound_domain && $license->bound_domain !== $domain) {
-                return ['status' => false, 'message' => 'Invalid Domain. Bound to: ' . $license->bound_domain];
+            if ($license->bound_domain && $this->normalizeDomain($license->bound_domain) !== $this->normalizeDomain($domain)) {
+                Log::warning('Domain mismatch during license activation', [
+                    'license_id'     => $license->id,
+                    'bound_domain'   => $license->bound_domain,
+                    'request_domain' => $domain,
+                ]);
+                return [
+                    'status'     => false,
+                    'message'    => 'Unauthorized Domain',
+                    'error_code' => 'unauthorised_domain',
+                ];
             }
-            return ['status' => false, 'message' => "Activation limit reached ({$activationLimit}). Please upgrade or reset licenses."];
+            return [
+                'status'     => false,
+                'message'    => "Activation limit reached ({$activationLimit}). Please upgrade or reset licenses.",
+                'error_code' => 'activation_limit_exceeded',
+            ];
         }
 
         // Domain Binding Logic (TOFU for primary, plus additional tracking)
@@ -473,7 +486,16 @@ class LicenseService
 
         if (!$this->validateFingerprintBinding($license, $fingerprint, $enforcementMode, true)) {
             $this->logActivation($license, $domain, $ip, 'failed', 'Environment Fingerprint Mismatch');
-            return ['status' => false, 'message' => 'Environment Fingerprint Mismatch'];
+            Log::warning('Fingerprint mismatch during activation', [
+                'license_id' => $license->id,
+                'expected'   => $license->bound_fingerprint,
+                'provided'   => $fingerprint,
+            ]);
+            return [
+                'status'     => false,
+                'message'    => 'Environment Fingerprint Mismatch',
+                'error_code' => 'fingerprint_mismatch',
+            ];
         }
 
         // Upgrade 6: Check Trial Fingerprint Abuse upon Activation (if fingerprint provided)

@@ -75,6 +75,8 @@ class LicenseFlowTest extends TestCase
 
         $failResponse->assertStatus(403)
             ->assertJsonPath('status', false)
-            ->assertJsonPath('message', 'Invalid Domain. Bound to: ' . $domain);
+            ->assertJsonPath('error_code', 'unauthorised_domain')
+            ->assertJsonPath('message', 'Unauthorized Domain')
+            ->assertDontSee($domain);
     }
 }

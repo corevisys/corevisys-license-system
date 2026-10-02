@@ -99,11 +99,29 @@ class LicenseController extends Controller
         $enforcementMode = $request->input('enforcement_mode');
 
         if (!$this->licenseService->validateFingerprintBinding($license, $requestFingerprint, $enforcementMode, false)) {
-            return response()->json(['status' => false, 'message' => 'Environment Fingerprint Required or Mismatched'], 403);
+            \Illuminate\Support\Facades\Log::warning('Fingerprint mismatch during check', [
+                'license_id' => $license->id,
+                'expected'   => $license->bound_fingerprint,
+                'provided'   => $requestFingerprint,
+            ]);
+            return response()->json([
+                'status'     => false,
+                'message'    => 'Environment Fingerprint Mismatch',
+                'error_code' => 'fingerprint_mismatch',
+            ], 403);
         }
 
         if ($license->bound_domain && $this->normalizeDomain($license->bound_domain) !== $this->normalizeDomain($request->domain)) {
-            return response()->json(['status' => false, 'message' => 'Invalid Domain. Bound to: ' . $license->bound_domain], 403);
+            \Illuminate\Support\Facades\Log::warning('Domain mismatch during check', [
+                'license_id'     => $license->id,
+                'bound_domain'   => $license->bound_domain,
+                'request_domain' => $request->domain,
+            ]);
+            return response()->json([
+                'status'     => false,
+                'message'    => 'Unauthorized Domain',
+                'error_code' => 'unauthorised_domain',
+            ], 403);
         }
 
         // Expiry / grace period (read-only)
@@ -166,11 +184,21 @@ class LicenseController extends Controller
         $enforcementMode = $request->input('enforcement_mode');
 
         if (!$this->licenseService->validateFingerprintBinding($license, $requestFingerprint, $enforcementMode, false)) {
-            return response()->json(['status' => false, 'message' => 'Environment Fingerprint Required or Mismatched'], 403);
+            \Illuminate\Support\Facades\Log::warning('Fingerprint mismatch during pulse', [
+                'license_id' => $license->id,
+                'expected'   => $license->bound_fingerprint,
+                'provided'   => $requestFingerprint,
+            ]);
+            return response()->json([
+                'status'     => false,
+                'message'    => 'Environment Fingerprint Mismatch',
+                'error_code' => 'fingerprint_mismatch',
+            ], 403);
         }
 
         if ($license->bound_domain && $this->normalizeDomain($license->bound_domain) !== $this->normalizeDomain($request->domain)) {
             $hasHistory = $license->activations()
+                ->where('status', 'success')
                 ->where(function ($q) use ($request) {
                     $q->where('request_domain', $request->domain);
                     if (in_array($request->domain, ['localhost', '127.0.0.1'])) {
@@ -182,7 +210,16 @@ class LicenseController extends Controller
             // If license is SUSPENDED, still report it to enforce blocking
             // even on an unauthorized domain.
             if (!$hasHistory && $license->status !== 'suspended') {
-                return response()->json(['status' => false, 'message' => 'Unauthorized Domain'], 403);
+                \Illuminate\Support\Facades\Log::warning('Unauthorized domain during pulse', [
+                    'license_id'     => $license->id,
+                    'bound_domain'   => $license->bound_domain,
+                    'request_domain' => $request->domain,
+                ]);
+                return response()->json([
+                    'status'     => false,
+                    'message'    => 'Unauthorized Domain',
+                    'error_code' => 'unauthorised_domain',
+                ], 403);
             }
         }
 

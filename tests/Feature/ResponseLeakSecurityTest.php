@@ -144,4 +144,99 @@ class ResponseLeakSecurityTest extends TestCase
             $this->assertSame($firstJson, $response->json(), "Response {$name} body must be identical to activateUnknown");
         }
     }
+
+    #[Test]
+    public function test_domain_and_fingerprint_mismatch_do_not_reveal_bound_domain_across_endpoints(): void
+    {
+        $this->license->update([
+            'bound_domain' => 'secret-bound-domain.com',
+            'bound_ip' => '1.2.3.4',
+            'bound_fingerprint' => 'bound-fp-hash-1234',
+            'activated_at' => now(),
+            'activation_limit' => 1,
+        ]);
+
+        \App\Models\LicenseActivation::create([
+            'license_id' => $this->license->id,
+            'request_ip' => '1.2.3.4',
+            'request_domain' => 'secret-bound-domain.com',
+            'status' => 'success',
+        ]);
+
+        // 1. Activate - Domain mismatch
+        $activateDomain = $this->postJson('/api/v1/license/activate', [
+            'license_key' => $this->validKey,
+            'domain' => 'unauthorised-domain.com',
+            'ip' => '5.6.7.8',
+            'fingerprint' => 'bound-fp-hash-1234',
+        ]);
+        $activateDomain->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'unauthorised_domain')
+            ->assertJsonPath('message', 'Unauthorized Domain')
+            ->assertDontSee('secret-bound-domain.com');
+
+        // 2. Check - Domain mismatch
+        $checkDomain = $this->postJson('/api/v1/license/check', [
+            'license_key' => $this->validKey,
+            'domain' => 'unauthorised-domain.com',
+            'ip' => '5.6.7.8',
+            'fingerprint' => 'bound-fp-hash-1234',
+        ]);
+        $checkDomain->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'unauthorised_domain')
+            ->assertJsonPath('message', 'Unauthorized Domain')
+            ->assertDontSee('secret-bound-domain.com');
+
+        // 3. Pulse - Domain mismatch
+        $pulseDomain = $this->postJson('/api/v1/license/pulse', [
+            'license_key' => $this->validKey,
+            'domain' => 'unauthorised-domain.com',
+            'fingerprint' => 'bound-fp-hash-1234',
+        ]);
+        $pulseDomain->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'unauthorised_domain')
+            ->assertJsonPath('message', 'Unauthorized Domain')
+            ->assertDontSee('secret-bound-domain.com');
+
+        // 4. Activate - Fingerprint mismatch
+        $activateFp = $this->postJson('/api/v1/license/activate', [
+            'license_key' => $this->validKey,
+            'domain' => 'secret-bound-domain.com',
+            'ip' => '1.2.3.4',
+            'fingerprint' => 'wrong-fp-hash',
+        ]);
+        $activateFp->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'fingerprint_mismatch')
+            ->assertJsonPath('message', 'Environment Fingerprint Mismatch')
+            ->assertDontSee('bound-fp-hash-1234');
+
+        // 5. Check - Fingerprint mismatch
+        $checkFp = $this->postJson('/api/v1/license/check', [
+            'license_key' => $this->validKey,
+            'domain' => 'secret-bound-domain.com',
+            'ip' => '1.2.3.4',
+            'fingerprint' => 'wrong-fp-hash',
+        ]);
+        $checkFp->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'fingerprint_mismatch')
+            ->assertJsonPath('message', 'Environment Fingerprint Mismatch')
+            ->assertDontSee('bound-fp-hash-1234');
+
+        // 6. Pulse - Fingerprint mismatch
+        $pulseFp = $this->postJson('/api/v1/license/pulse', [
+            'license_key' => $this->validKey,
+            'domain' => 'secret-bound-domain.com',
+            'fingerprint' => 'wrong-fp-hash',
+        ]);
+        $pulseFp->assertStatus(403)
+            ->assertJsonPath('status', false)
+            ->assertJsonPath('error_code', 'fingerprint_mismatch')
+            ->assertJsonPath('message', 'Environment Fingerprint Mismatch')
+            ->assertDontSee('bound-fp-hash-1234');
+    }
 }
