@@ -726,7 +726,7 @@ class LicenseService
 
         $results = ['success' => 0, 'failed' => 0];
 
-        $dueQuery->chunkById(500, function ($licenses) use (&$results) {
+        $dueQuery->with('product.prices')->chunkById(500, function ($licenses) use (&$results) {
             foreach ($licenses as $license) {
                 if ($this->renewLicense($license)) {
                     $results['success']++;
@@ -769,9 +769,18 @@ class LicenseService
             return false;
         }
 
-        // 3. Resolve billing period from subscription price (default 30 days)
-        $price = $license->product?->prices()->where('type', 'subscription')->first()
-            ?? $license->product?->prices()->where('type', 'full')->first();
+        // 3. Resolve billing period from subscription price (default 30 days).
+        // Use the already-loaded prices collection when available (eager-load path) to avoid
+        // N+1 queries when processRenewals() iterates over a chunk of licenses.
+        $product = $license->product;
+        if ($product && $product->relationLoaded('prices')) {
+            $prices = $product->prices;   // Eloquent Collection (no new query)
+            $price  = $prices->firstWhere('type', 'subscription')
+                   ?? $prices->firstWhere('type', 'full');
+        } else {
+            $price = $product?->prices()->where('type', 'subscription')->first()
+                  ?? $product?->prices()->where('type', 'full')->first();
+        }
         $billingPeriod = $price && $price->billing_period ? (int) $price->billing_period : 30;
 
         // 4. Payment qualification / charge (1d)

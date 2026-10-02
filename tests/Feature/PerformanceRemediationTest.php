@@ -479,16 +479,9 @@ class PerformanceRemediationTest extends TestCase
         for ($i = 0; $i < 10; $i++) {
             $prod  = ($i % 2 === 0) ? $product1 : $product2;
             $order = Order::factory()->create(['user_id' => $user->id]);
-            Payment::create([
-                'order_id'       => $order->id,
-                'user_id'        => $user->id,
-                'gateway'        => 'stripe',
-                'transaction_id' => "tx_perf_{$i}",
-                'amount'         => 75,
-                'status'         => 'verified',
-            ]);
 
-            License::create([
+            // License must be created before payment so we can link via license_id (FIX-005).
+            $license = License::create([
                 'user_id'          => $user->id,
                 'product_id'       => $prod->id,
                 'order_id'         => $order->id,
@@ -499,6 +492,16 @@ class PerformanceRemediationTest extends TestCase
                 'auto_renew'       => true,
                 'expires_at'       => Carbon::now()->subMinute(),
                 'next_billing_at'  => Carbon::now()->subMinute(),
+            ]);
+
+            Payment::create([
+                'order_id'       => $order->id,
+                'user_id'        => $user->id,
+                'license_id'     => $license->id,   // FIX-005: explicit renewal payment link
+                'gateway'        => 'manual',
+                'transaction_id' => "tx_perf_{$i}",
+                'amount'         => 75,
+                'status'         => 'verified',
             ]);
         }
 
