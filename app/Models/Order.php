@@ -50,4 +50,9 @@ class Order extends Model
     {
         return $this->hasMany(License::class);
     }
+
+    public function license()
+    {
+        return $this->belongsTo(License::class);
+    }
 }

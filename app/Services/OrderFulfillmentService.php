@@ -24,6 +24,10 @@ class OrderFulfillmentService
     {
         if ($order->status === OrderStatus::COMPLETED) {
             $existingLicense = $order->licenses()->first();
+            if (!$existingLicense && $order->type === 'renewal' && $order->license_id) {
+                $existingLicense = $order->license ?? \App\Models\License::find($order->license_id);
+            }
+
             if ($existingLicense) {
                 Log::info("OrderFulfillment: Order {$order->order_number} already completed. Skipping.");
                 return ['license' => $existingLicense, 'api_token' => null];

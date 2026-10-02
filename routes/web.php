@@ -250,15 +250,18 @@ Route::get('/orders/stripe/cancel', function () {
 })->name('orders.stripe.cancel');
 
 Route::get('/orders/bkash/callback', function (\Illuminate\Http\Request $request) {
-    $paymentID = $request->get('paymentID');
+    $paymentID = is_string($request->get('paymentID')) ? trim($request->get('paymentID')) : null;
 
     if (!$paymentID) {
         return redirect()->route('orders')->with('error', 'Payment was not completed.');
     }
 
     $payment = \App\Models\Payment::where('gateway', 'bkash')
-        ->where('transaction_id', $paymentID)
-        ->with('order')
+        ->where(function ($query) use ($paymentID) {
+            $query->where('transaction_id', $paymentID)
+                ->orWhere('gateway_response->paymentID', $paymentID);
+        })
+        ->with(['order.licenses', 'order.items.product', 'order.license'])
         ->first();
 
     if (!$payment || !$payment->order) {
@@ -266,43 +269,78 @@ Route::get('/orders/bkash/callback', function (\Illuminate\Http\Request $request
         return redirect()->route('orders')->with('error', 'Payment verification failed.');
     }
 
+    if (auth()->check() && (int) $payment->user_id !== (int) auth()->id()) {
+        \Illuminate\Support\Facades\Log::warning('bKash Callback: User mismatch.', [
+            'payment_id' => $paymentID,
+            'payment_user_id' => $payment->user_id,
+            'auth_user_id' => auth()->id(),
+        ]);
+        return redirect()->route('orders')->with('error', 'Unauthorized payment callback.');
+    }
+
+    $lock = \Illuminate\Support\Facades\Cache::lock("bkash_payment_process:{$paymentID}", 15);
     try {
-        $bkashService = new \App\Services\BKashPaymentService();
-        $result = $bkashService->executePayment($paymentID);
-    } catch (\Exception $e) {
-        \Illuminate\Support\Facades\Log::error('bKash Callback: Execute failed.', ['payment_id' => $paymentID, 'error' => $e->getMessage()]);
-        return redirect()->route('orders')->with('error', 'Payment verification failed.');
+        $lock->block(5);
+    } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
+        \Illuminate\Support\Facades\Log::warning('bKash Callback: Lock timeout.', ['payment_id' => $paymentID]);
+        return redirect()->route('orders')->with('info', 'Your payment is currently being processed. Please refresh in a moment.');
     }
 
-    if (($result['transactionStatus'] ?? '') === 'Completed') {
-        try {
-            $fulfillmentService = app(\App\Services\OrderFulfillmentService::class);
-            $fulfillment = $fulfillmentService->fulfillOrder($payment->order, [
-                'transaction_id' => $result['trxID'] ?? $result['paymentID'],
-                'gateway_response' => $result,
-            ]);
+    try {
+        $payment->refresh();
+        $order = $payment->order;
 
-            if ($fulfillment) {
-                $license = $fulfillment['license'];
-                $apiToken = $fulfillment['api_token'];
+        if ($order && ($order->status === \App\Support\OrderStatus::COMPLETED || $payment->status === 'verified')) {
+            \Illuminate\Support\Facades\Log::info('bKash Callback: Payment/order already completed. Idempotent return.', ['payment_id' => $paymentID]);
+            $existingLicense = $order->licenses()->first()
+                ?? ($order->license_id ? \App\Models\License::find($order->license_id) : null)
+                ?? $order->license;
 
-                if ($license) {
-                    session()->flash('new_license_key', 'XXXX-XXXX-' . substr($license->license_key_hash ?? '', -4));
-                }
-                if ($apiToken) {
-                    session()->flash('new_api_token', $apiToken);
-                }
+            if ($existingLicense) {
+                session()->flash('new_license_key', 'XXXX-XXXX-' . substr($existingLicense->license_key_hash ?? '', -4));
             }
-
-            return redirect()->route('dashboard')->with('success', 'Payment successful! Your license and API Key have been generated.');
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('bKash Callback: Fulfillment error.', ['payment_id' => $paymentID, 'error' => $e->getMessage()]);
-            return redirect()->route('orders')->with('error', 'Payment verification failed.');
+            return redirect()->route('dashboard')->with('success', 'Payment successful! Your license is active.');
         }
-    }
 
-    \Illuminate\Support\Facades\Log::warning('bKash Callback: Payment not completed.', ['payment_id' => $paymentID, 'status' => $result['transactionStatus'] ?? 'unknown']);
-    return redirect()->route('orders')->with('error', 'Payment was not completed.');
+        $bkashService = app(\App\Services\BKashPaymentService::class);
+        $result = $bkashService->executeOrQueryPayment($paymentID);
+
+        if (($result['transactionStatus'] ?? '') === 'Completed') {
+            try {
+                $fulfillmentService = app(\App\Services\OrderFulfillmentService::class);
+                $trxID = $result['trxID'] ?? $result['paymentID'];
+                $fulfillment = $fulfillmentService->fulfillOrder($order, [
+                    'transaction_id' => $trxID,
+                    'gateway_response' => array_merge($payment->gateway_response ?? [], $result, ['paymentID' => $paymentID]),
+                ]);
+
+                if ($fulfillment) {
+                    $license = $fulfillment['license'];
+                    $apiToken = $fulfillment['api_token'];
+
+                    if ($license) {
+                        session()->flash('new_license_key', 'XXXX-XXXX-' . substr($license->license_key_hash ?? '', -4));
+                    }
+                    if ($apiToken) {
+                        session()->flash('new_api_token', $apiToken);
+                    }
+                }
+
+                return redirect()->route('dashboard')->with('success', 'Payment successful! Your license and API Key have been generated.');
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('bKash Callback: Fulfillment error.', ['payment_id' => $paymentID, 'error' => $e->getMessage()]);
+                return redirect()->route('orders')->with('error', 'Payment verification failed.');
+            }
+        }
+
+        \Illuminate\Support\Facades\Log::warning('bKash Callback: Payment not completed.', [
+            'payment_id' => $paymentID,
+            'status' => $result['transactionStatus'] ?? 'unknown',
+        ]);
+        return redirect()->route('orders')->with('error', 'Payment was not completed.');
+    } finally {
+        optional($lock)->release();
+    }
 })->name('orders.bkash.callback');
 
 Route::get('/dashboard', function () {

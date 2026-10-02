@@ -61,6 +61,16 @@ class BKashPaymentTest extends TestCase
                 ]);
             }
 
+            if (str_contains($request->url(), '/checkout/payment/status')) {
+                return Http::response([
+                    'paymentID' => 'TR0012PAYMENT',
+                    'trxID' => 'TRX123456',
+                    'transactionStatus' => $completed ? 'Completed' : 'Initiated',
+                    'amount' => '99.00',
+                    'statusCode' => '0000',
+                ]);
+            }
+
             return Http::response(['statusCode' => '4040'], 404);
         });
     }
@@ -365,5 +375,364 @@ class BKashPaymentTest extends TestCase
 
         $this->assertDatabaseHas('orders', ['id' => $order->id, 'status' => 'completed']);
         $this->assertDatabaseHas('licenses', ['order_id' => $order->id]);
+    }
+
+    public function test_bkash_callback_ignores_query_parameters_and_verifies_server_side()
+    {
+        // Gateway returns non-completed server response despite query params claiming success
+        $this->fakeBkashApi(completed: false);
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create(['name' => 'Untrusted Query Params Product']);
+        $product->prices()->create(['currency' => 'BDT', 'amount' => 99.00, 'type' => 'full']);
+
+        $order = Order::create([
+            'order_number' => 'ORD-UNTRUST-01',
+            'user_id' => $user->id,
+            'total_amount' => 99.00,
+            'currency' => 'BDT',
+            'status' => 'awaiting_payment',
+            'payment_method' => 'online',
+        ]);
+        $order->items()->create([
+            'product_id' => $product->id,
+            'price' => 99.00,
+            'license_type' => 'full',
+        ]);
+        $order->payments()->create([
+            'user_id' => $user->id,
+            'gateway' => 'bkash',
+            'transaction_id' => 'TR0012PAYMENT',
+            'amount' => 99.00,
+            'status' => 'pending',
+        ]);
+
+        // Malicious or spoofed query parameters attempting to claim success and forge trxID
+        $response = $this->get('/orders/bkash/callback?paymentID=TR0012PAYMENT&status=success&trxID=FAKE_TRX_9999');
+
+        $response->assertRedirect(route('orders'));
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'status' => 'awaiting_payment']);
+        $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'status' => 'pending']);
+        $this->assertDatabaseMissing('licenses', ['order_id' => $order->id]);
+    }
+
+    public function test_bkash_callback_ignores_cancel_query_parameter_when_server_confirms_completed()
+    {
+        // Server API confirms payment is completed
+        $this->fakeBkashApi(completed: true);
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create(['name' => 'Cancel Spoof Product']);
+        $product->prices()->create(['currency' => 'BDT', 'amount' => 99.00, 'type' => 'full']);
+
+        $order = Order::create([
+            'order_number' => 'ORD-CANCEL-SPOOF',
+            'user_id' => $user->id,
+            'total_amount' => 99.00,
+            'currency' => 'BDT',
+            'status' => 'awaiting_payment',
+            'payment_method' => 'online',
+        ]);
+        $order->items()->create([
+            'product_id' => $product->id,
+            'price' => 99.00,
+            'license_type' => 'full',
+        ]);
+        $order->payments()->create([
+            'user_id' => $user->id,
+            'gateway' => 'bkash',
+            'transaction_id' => 'TR0012PAYMENT',
+            'amount' => 99.00,
+            'status' => 'pending',
+        ]);
+
+        // Tampered query parameter saying status=cancel, but server-side confirms Completed
+        $response = $this->get('/orders/bkash/callback?paymentID=TR0012PAYMENT&status=cancel');
+
+        $response->assertRedirect(route('dashboard'));
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'status' => 'completed']);
+        $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'status' => 'verified', 'transaction_id' => 'TRX123456']);
+        $this->assertDatabaseHas('licenses', ['order_id' => $order->id]);
+    }
+
+    public function test_bkash_callback_falls_back_to_query_payment_if_execute_fails_and_fulfills_if_completed()
+    {
+        // Execute returns 500/fails, but queryPayment returns Completed
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'token/grant')) {
+                return Http::response([
+                    'status_code' => '0000',
+                    'status_message' => 'Successful',
+                    'id_token' => 'test-id-token',
+                ]);
+            }
+
+            if (str_contains($request->url(), '/execute')) {
+                return Http::response(['statusCode' => '2029', 'statusMessage' => 'Duplicate execution'], 500);
+            }
+
+            if (str_contains($request->url(), '/checkout/payment/status')) {
+                return Http::response([
+                    'paymentID' => 'TR0012PAYMENT',
+                    'trxID' => 'TRX_FROM_QUERY_STATUS',
+                    'transactionStatus' => 'Completed',
+                    'amount' => '99.00',
+                    'statusCode' => '0000',
+                ]);
+            }
+
+            return Http::response(['statusCode' => '4040'], 404);
+        });
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create(['name' => 'Query Fallback Product']);
+        $product->prices()->create(['currency' => 'BDT', 'amount' => 99.00, 'type' => 'full']);
+
+        $order = Order::create([
+            'order_number' => 'ORD-QUERY-FALLBACK',
+            'user_id' => $user->id,
+            'total_amount' => 99.00,
+            'currency' => 'BDT',
+            'status' => 'awaiting_payment',
+            'payment_method' => 'online',
+        ]);
+        $order->items()->create([
+            'product_id' => $product->id,
+            'price' => 99.00,
+            'license_type' => 'full',
+        ]);
+        $order->payments()->create([
+            'user_id' => $user->id,
+            'gateway' => 'bkash',
+            'transaction_id' => 'TR0012PAYMENT',
+            'amount' => 99.00,
+            'status' => 'pending',
+        ]);
+
+        $response = $this->get('/orders/bkash/callback?paymentID=TR0012PAYMENT');
+
+        $response->assertRedirect(route('dashboard'));
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'status' => 'completed']);
+        $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'status' => 'verified', 'transaction_id' => 'TRX_FROM_QUERY_STATUS']);
+        $this->assertDatabaseHas('licenses', ['order_id' => $order->id]);
+    }
+
+    public function test_bkash_callback_is_idempotent_on_duplicate_invocations_no_duplicate_license()
+    {
+        $this->fakeBkashApi(completed: true);
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create(['name' => 'Idempotent Callback Product']);
+        $product->prices()->create(['currency' => 'BDT', 'amount' => 99.00, 'type' => 'full']);
+
+        $order = Order::create([
+            'order_number' => 'ORD-IDEM-01',
+            'user_id' => $user->id,
+            'total_amount' => 99.00,
+            'currency' => 'BDT',
+            'status' => 'awaiting_payment',
+            'payment_method' => 'online',
+        ]);
+        $order->items()->create([
+            'product_id' => $product->id,
+            'price' => 99.00,
+            'license_type' => 'full',
+        ]);
+        $order->payments()->create([
+            'user_id' => $user->id,
+            'gateway' => 'bkash',
+            'transaction_id' => 'TR0012PAYMENT',
+            'amount' => 99.00,
+            'status' => 'pending',
+        ]);
+
+        // First callback invocation
+        $firstResponse = $this->get('/orders/bkash/callback?paymentID=TR0012PAYMENT');
+        $firstResponse->assertRedirect(route('dashboard'));
+
+        $this->assertDatabaseHas('orders', ['id' => $order->id, 'status' => 'completed']);
+        $this->assertEquals(1, \App\Models\License::where('order_id', $order->id)->count());
+
+        // Second callback invocation with same paymentID
+        $secondResponse = $this->get('/orders/bkash/callback?paymentID=TR0012PAYMENT');
+        $secondResponse->assertRedirect(route('dashboard'));
+
+        // License count must strictly remain 1 (no duplicate license)
+        $this->assertEquals(1, \App\Models\License::where('order_id', $order->id)->count());
+    }
+
+    public function test_bkash_callback_is_idempotent_on_renewal_orders_no_duplicate_renewal()
+    {
+        $this->fakeBkashApi(completed: true);
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create(['name' => 'Renewal Product']);
+        $price = $product->prices()->create(['currency' => 'BDT', 'amount' => 99.00, 'type' => 'full', 'billing_period' => 30]);
+
+        $initialOrder = Order::create([
+            'order_number' => 'ORD-INIT-01',
+            'user_id' => $user->id,
+            'total_amount' => 99.00,
+            'currency' => 'BDT',
+            'status' => 'completed',
+            'payment_method' => 'online',
+            'type' => 'purchase',
+        ]);
+        $initialOrder->items()->create([
+            'product_id' => $product->id,
+            'price' => 99.00,
+            'license_type' => 'full',
+        ]);
+        $license = app(\App\Services\LicenseService::class)->createLicense($initialOrder, $product, 'full');
+        $initialExpiry = now()->addDays(15);
+        $license->update(['expires_at' => $initialExpiry]);
+
+        // Create renewal order pointing to existing license
+        $renewalOrder = Order::create([
+            'order_number' => 'ORD-REN-01',
+            'user_id' => $user->id,
+            'license_id' => $license->id,
+            'total_amount' => 99.00,
+            'currency' => 'BDT',
+            'status' => 'awaiting_payment',
+            'payment_method' => 'online',
+            'type' => 'renewal',
+        ]);
+        $renewalOrder->items()->create([
+            'product_id' => $product->id,
+            'product_price_id' => $price->id,
+            'price' => 99.00,
+            'license_type' => 'full',
+        ]);
+        $renewalOrder->payments()->create([
+            'user_id' => $user->id,
+            'license_id' => $license->id,
+            'gateway' => 'bkash',
+            'transaction_id' => 'TR0012PAYMENT',
+            'amount' => 99.00,
+            'status' => 'pending',
+        ]);
+
+        // First callback invocation: renews license once (+30 days)
+        $firstResponse = $this->get('/orders/bkash/callback?paymentID=TR0012PAYMENT');
+        $firstResponse->assertRedirect(route('dashboard'));
+
+        $license->refresh();
+        $expectedRenewedExpiry = $license->expires_at;
+        $this->assertTrue($expectedRenewedExpiry->greaterThan($initialExpiry));
+
+        // Second callback invocation: must NOT renew again (+0 days)
+        $secondResponse = $this->get('/orders/bkash/callback?paymentID=TR0012PAYMENT');
+        $secondResponse->assertRedirect(route('dashboard'));
+
+        $license->refresh();
+        $this->assertEquals(
+            $expectedRenewedExpiry->toIso8601String(),
+            $license->expires_at->toIso8601String(),
+            'License expiry was extended a second time on repeated callback'
+        );
+        $this->assertEquals(1, \App\Models\License::where('user_id', $user->id)->count());
+    }
+
+    public function test_api_execute_bkash_is_idempotent_on_repeated_calls()
+    {
+        $this->fakeBkashApi(completed: true);
+
+        $user = User::factory()->create();
+        $product = Product::factory()->create(['name' => 'API Idempotent']);
+        $product->prices()->create(['currency' => 'BDT', 'amount' => 99.00, 'type' => 'full']);
+
+        $order = Order::create([
+            'order_number' => 'ORD-API-IDEM',
+            'user_id' => $user->id,
+            'total_amount' => 99.00,
+            'currency' => 'BDT',
+            'status' => 'awaiting_payment',
+            'payment_method' => 'online',
+        ]);
+        $order->items()->create([
+            'product_id' => $product->id,
+            'price' => 99.00,
+            'license_type' => 'full',
+        ]);
+        $order->payments()->create([
+            'user_id' => $user->id,
+            'gateway' => 'bkash',
+            'transaction_id' => 'TR0012PAYMENT',
+            'amount' => 99.00,
+            'status' => 'pending',
+        ]);
+
+        Sanctum::actingAs($user);
+
+        // First call
+        $firstResponse = $this->postJson('/api/v1/orders/bkash/execute', [
+            'payment_id' => 'TR0012PAYMENT',
+        ]);
+        $firstResponse->assertStatus(200)
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('transaction_id', 'TRX123456');
+
+        // Second call
+        $secondResponse = $this->postJson('/api/v1/orders/bkash/execute', [
+            'payment_id' => 'TR0012PAYMENT',
+        ]);
+        $secondResponse->assertStatus(200)
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('transaction_id', 'TRX123456');
+
+        $this->assertEquals(1, \App\Models\License::where('order_id', $order->id)->count());
+    }
+
+    public function test_order_fulfillment_service_skips_already_completed_renewal_order()
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create(['name' => 'Direct Fulfillment Product']);
+        $product->prices()->create(['currency' => 'BDT', 'amount' => 50.00, 'type' => 'full', 'billing_period' => 30]);
+
+        $initialOrder = Order::create([
+            'order_number' => 'ORD-DIRECT-INIT',
+            'user_id' => $user->id,
+            'total_amount' => 50.00,
+            'currency' => 'BDT',
+            'status' => 'completed',
+            'payment_method' => 'online',
+            'type' => 'purchase',
+        ]);
+        $initialOrder->items()->create([
+            'product_id' => $product->id,
+            'price' => 50.00,
+            'license_type' => 'full',
+        ]);
+        $license = app(\App\Services\LicenseService::class)->createLicense($initialOrder, $product, 'full');
+        $fixedExpiry = now()->addDays(20);
+        $license->update(['expires_at' => $fixedExpiry]);
+
+        $renewalOrder = Order::create([
+            'order_number' => 'ORD-DIRECT-REN',
+            'user_id' => $user->id,
+            'license_id' => $license->id,
+            'total_amount' => 50.00,
+            'currency' => 'BDT',
+            'status' => 'completed', // Already completed
+            'payment_method' => 'online',
+            'type' => 'renewal',
+        ]);
+        $renewalOrder->items()->create([
+            'product_id' => $product->id,
+            'price' => 50.00,
+            'license_type' => 'full',
+        ]);
+
+        $service = app(\App\Services\OrderFulfillmentService::class);
+        $result = $service->fulfillOrder($renewalOrder);
+
+        $this->assertNotNull($result);
+        $this->assertEquals($license->id, $result['license']->id);
+        $this->assertEquals(
+            $fixedExpiry->toIso8601String(),
+            $license->fresh()->expires_at->toIso8601String(),
+            'License expiry changed on an already completed renewal order'
+        );
     }
 }

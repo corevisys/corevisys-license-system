@@ -232,6 +232,42 @@ class BKashPaymentService
     }
 
     /**
+     * Strictly verify payment success using server-side bKash APIs.
+     * Never trusts query parameters; tries executePayment first, and falls back
+     * to queryPayment if execute throws or does not report Completed.
+     */
+    public function executeOrQueryPayment(string $paymentID): array
+    {
+        $result = null;
+
+        try {
+            $result = $this->executePayment($paymentID);
+        } catch (\Throwable $e) {
+            Log::warning('bKash executePayment failed, checking queryPayment', [
+                'payment_id' => $paymentID,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        if (!is_array($result) || ($result['transactionStatus'] ?? '') !== 'Completed') {
+            try {
+                $queryResult = $this->queryPayment($paymentID);
+                if (is_array($queryResult) && ($queryResult['transactionStatus'] ?? '') === 'Completed') {
+                    $result = $queryResult;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('bKash queryPayment failed after execute', [
+                    'payment_id' => $paymentID,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return is_array($result) ? $result : [];
+    }
+
+
+    /**
      * bKash only settles in BDT. If the order is priced in another currency,
      * convert via the configured exchange rates (rate_to_base = units of USD).
      */

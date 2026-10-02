@@ -134,34 +134,67 @@ class OrderController extends Controller
             'payment_id' => 'required|string',
         ]);
 
+        $paymentID = trim($request->payment_id);
+
         $payment = Payment::where('gateway', 'bkash')
-            ->where('transaction_id', $request->payment_id)
+            ->where(function ($query) use ($paymentID) {
+                $query->where('transaction_id', $paymentID)
+                    ->orWhere('gateway_response->paymentID', $paymentID);
+            })
             ->where('user_id', $request->user()->id)
-            ->with('order')
+            ->with(['order.licenses', 'order.items.product', 'order.license'])
             ->firstOrFail();
 
-        $bkashService = new BKashPaymentService();
-        $result = $bkashService->executePayment($request->payment_id);
-
-        if (($result['transactionStatus'] ?? '') === 'Completed') {
-            $fulfillment = app(OrderFulfillmentService::class)->fulfillOrder($payment->order, [
-                'transaction_id' => $result['trxID'] ?? $result['paymentID'],
-                'gateway_response' => $result,
-            ]);
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Payment verified. License generated.',
-                'license_reference' => 'XXXX-XXXX-' . substr($fulfillment['license']->license_key_hash ?? '', -4),
-                'transaction_id' => $result['trxID'] ?? $result['paymentID'],
-            ]);
+        $lock = \Illuminate\Support\Facades\Cache::lock("bkash_payment_process:{$paymentID}", 15);
+        try {
+            $lock->block(5);
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
+            return response()->json(['status' => false, 'message' => 'Payment processing in progress.'], 409);
         }
 
-        return response()->json([
-            'status' => false,
-            'message' => 'Payment not completed.',
-            'transaction_status' => $result['transactionStatus'] ?? null,
-        ], 402);
+        try {
+            $payment->refresh();
+            $order = $payment->order;
+
+            if ($order && ($order->status === OrderStatus::COMPLETED || $payment->status === 'verified')) {
+                $license = $order->licenses()->first()
+                    ?? ($order->license_id ? \App\Models\License::find($order->license_id) : null)
+                    ?? $order->license;
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Payment verified. License generated.',
+                    'license_reference' => $license ? 'XXXX-XXXX-' . substr($license->license_key_hash ?? '', -4) : null,
+                    'transaction_id' => $payment->transaction_id,
+                ]);
+            }
+
+            $bkashService = app(BKashPaymentService::class);
+            $result = $bkashService->executeOrQueryPayment($paymentID);
+
+            if (($result['transactionStatus'] ?? '') === 'Completed') {
+                $trxID = $result['trxID'] ?? $result['paymentID'];
+                $fulfillment = app(OrderFulfillmentService::class)->fulfillOrder($order, [
+                    'transaction_id' => $trxID,
+                    'gateway_response' => array_merge($payment->gateway_response ?? [], $result, ['paymentID' => $paymentID]),
+                ]);
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Payment verified. License generated.',
+                    'license_reference' => $fulfillment && $fulfillment['license'] ? 'XXXX-XXXX-' . substr($fulfillment['license']->license_key_hash ?? '', -4) : null,
+                    'transaction_id' => $trxID,
+                ]);
+            }
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Payment not completed.',
+                'transaction_status' => $result['transactionStatus'] ?? null,
+            ], 402);
+        } finally {
+            optional($lock)->release();
+        }
     }
 
     public function uploadReceipt(Request $request, $id)
