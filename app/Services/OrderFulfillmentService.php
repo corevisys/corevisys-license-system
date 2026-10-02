@@ -46,7 +46,7 @@ class OrderFulfillmentService
                 }
 
                 $license = match ($order->type) {
-                    'renewal' => $this->licenseService->renewLicense($order, $item->product),
+                    'renewal' => $this->licenseService->renewLicenseFromOrder($order, $item->product),
                     'upgrade' => $this->licenseService->upgradeLicense($order, $item->product),
                     default => $this->licenseService->createLicense($order, $item->product, $item->license_type ?? 'full'),
                 };

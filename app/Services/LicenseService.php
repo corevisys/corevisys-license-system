@@ -57,9 +57,11 @@ class LicenseService
     }
 
     /**
-     * Renew an existing license.
+     * Renew an existing license from a completed order (order-fulfillment path).
+     * Called by OrderFulfillmentService for manual/admin renewal orders.
+     * Do NOT call from the cron/job renewal path — use renewLicense(License) instead.
      */
-    public function renewLicense(Order $order, Product $product)
+    public function renewLicenseFromOrder(Order $order, Product $product)
     {
         // 1. Find the specific license if ID is provided, else fallback to user/product lookup
         $license = $this->resolveLicenseForOrder($order, $product);
