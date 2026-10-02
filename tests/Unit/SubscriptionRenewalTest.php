@@ -22,10 +22,10 @@ test('renewal logic uses billing period in days', function () {
         'product_id'     => $product->id,
         'auto_renew'     => true,
         'status'         => 'active',
-        'created_at'     => Carbon::now()->subDays(30),
         'next_billing_at' => Carbon::now()->subDay(),
         'expires_at'     => Carbon::now()->subDay(),
     ]);
+    $license->forceFill(['created_at' => Carbon::now()->subDays(30)])->save();
 
     // Renewal-cycle payment recorded now (strictly after license creation)
     // Must be explicitly linked to the license (license_id) to qualify under FIX-005.
@@ -37,7 +37,6 @@ test('renewal logic uses billing period in days', function () {
         'transaction_id' => 'tx_unit_test',
         'amount'         => 100,
         'status'         => 'verified',
-        'created_at'     => Carbon::now(),
     ]);
 
     $service = new LicenseService();

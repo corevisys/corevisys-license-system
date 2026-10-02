@@ -49,11 +49,11 @@ class SubscriptionRenewalTest extends TestCase
             'type'           => 'subscription',
             'status'         => 'active',
             'auto_renew'     => true,
-            'created_at'     => Carbon::now()->subDays(30),
             'expires_at'     => Carbon::now()->subMinute(), // Expired
             'next_billing_at' => Carbon::now()->subMinute(), // Due
             // No gateway_subscription_id: non-Stripe path processed by cron
         ]);
+        $license->forceFill(['created_at' => Carbon::now()->subDays(30)])->save();
 
         // Renewal-cycle payment explicitly linked to the license (FIX-005 requirement).
         Payment::create([
