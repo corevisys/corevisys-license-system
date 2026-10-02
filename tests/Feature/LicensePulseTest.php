@@ -77,6 +77,8 @@ PEM;
         ]);
     }
 
+    private ?License $lastCreatedLicense = null;
+
     private function createLicense(array $overrides = []): array
     {
         $user = User::factory()->create();
@@ -108,7 +110,18 @@ PEM;
             'last_check_at' => now()->subDay(),
         ], $overrides));
 
+        $this->lastCreatedLicense = $license;
+
         return [$license, $key];
+    }
+
+    public function postJson($uri, array $data = [], array $headers = [], $options = 0)
+    {
+        if ($uri === '/api/v1/license/pulse' && !array_key_exists('product_code', $data) && $this->lastCreatedLicense) {
+            $data['product_code'] = $this->lastCreatedLicense->product->slug;
+        }
+
+        return parent::postJson($uri, $data, $headers, $options);
     }
 
     public function test_pulse_success_updates_last_check_at_and_creates_no_activation_row(): void
