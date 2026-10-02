@@ -842,6 +842,7 @@ Route::middleware('auth')->group(function () {
             $data = $request->validate([
                 'id' => 'nullable|exists:products,id',
                 'name' => 'required|string|max:255',
+                'slug' => 'nullable|string|max:255',
                 'description' => 'nullable|string',
                 'is_active' => 'required|boolean',
                 'prices' => 'required|array',
@@ -851,11 +852,24 @@ Route::middleware('auth')->group(function () {
                 'prices.*.billing_period' => 'nullable|integer',
             ]);
 
+            $targetSlug = isset($data['slug']) && trim($data['slug']) !== ''
+                ? \Illuminate\Support\Str::slug($data['slug'])
+                : \Illuminate\Support\Str::slug($data['name']);
+
+            if (!empty($data['id'])) {
+                $existing = \App\Models\Product::findOrFail($data['id']);
+                if ($existing->slug !== $targetSlug && $existing->licenses()->exists()) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'slug' => ['The product slug cannot be changed while licenses exist for this product.'],
+                    ]);
+                }
+            }
+
             $product = \App\Models\Product::updateOrCreate(
                 ['id' => $data['id'] ?? null],
                 [
                     'name' => $data['name'],
-                    'slug' => \Illuminate\Support\Str::slug($data['name']),
+                    'slug' => $targetSlug,
                     'description' => $data['description'],
                     'is_active' => $data['is_active'],
                 ]

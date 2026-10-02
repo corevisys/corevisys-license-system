@@ -16,6 +16,15 @@ class Product extends Model
         'is_active' => 'boolean',
     ];
 
+    protected static function booted(): void
+    {
+        static::updating(function (Product $product) {
+            if ($product->isDirty('slug') && $product->licenses()->exists()) {
+                throw new \DomainException('The product slug cannot be changed while licenses exist for this product.');
+            }
+        });
+    }
+
     public function prices()
     {
         return $this->hasMany(ProductPrice::class);
