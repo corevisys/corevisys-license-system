@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\License;
 use App\Services\LicenseService;
+use App\Support\DomainNormalizer;
 use App\Support\OfflineLicenseVerification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -219,15 +220,11 @@ class LicenseController extends Controller
         }
 
         if ($license->bound_domain && $this->normalizeDomain($license->bound_domain) !== $this->normalizeDomain($request->domain)) {
+            $normalizedRequestDomain = $this->normalizeDomain($request->domain);
             $hasHistory = $license->activations()
                 ->where('status', 'success')
-                ->where(function ($q) use ($request) {
-                    $q->where('request_domain', $request->domain);
-                    if (in_array($request->domain, ['localhost', '127.0.0.1'])) {
-                        $q->orWhere('request_domain', 'localhost');
-                    }
-                })
-                ->exists();
+                ->get()
+                ->contains(fn ($act) => $this->normalizeDomain($act->request_domain) === $normalizedRequestDomain);
 
             // If license is SUSPENDED, still report it to enforce blocking
             // even on an unauthorized domain.
@@ -437,7 +434,7 @@ class LicenseController extends Controller
 
     protected function normalizeDomain(?string $domain): ?string
     {
-        return in_array($domain, ['localhost', '127.0.0.1']) ? '127.0.0.1' : $domain;
+        return DomainNormalizer::normalize($domain);
     }
 
     protected function shouldEnforceFingerprint(Request $request): bool

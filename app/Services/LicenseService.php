@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Services\LicenseStateMachine;
+use App\Support\DomainNormalizer;
 
 class LicenseService
 {
@@ -429,19 +430,23 @@ class LicenseService
             $license->update(['activation_limit' => 1]);
         }
 
+        $normalizedDomain = $this->normalizeDomain($domain);
+
         // Activation Limit Guardrails
         $activationLimit = $license->activation_limit ?? 1;
         $activeBindingsCount = LicenseActivation::where('license_id', $license->id)
             ->where('status', 'success')
-            ->distinct()
-            ->count('request_domain');
+            ->get()
+            ->map(fn ($act) => $this->normalizeDomain($act->request_domain))
+            ->unique()
+            ->count();
 
         // Check if this is a NEW domain/environment activation
-        $isExistingBinding = ($license->bound_domain === $domain) || 
+        $isExistingBinding = ($this->normalizeDomain($license->bound_domain) === $normalizedDomain) || 
                              LicenseActivation::where('license_id', $license->id)
                                 ->where('status', 'success')
-                                ->where('request_domain', $domain)
-                                ->exists();
+                                ->get()
+                                ->contains(fn ($act) => $this->normalizeDomain($act->request_domain) === $normalizedDomain);
 
         if (!$isExistingBinding && $activeBindingsCount >= $activationLimit) {
             $this->logActivation($license, $domain, $ip, 'failed', 'Activation Limit Reached');
@@ -456,7 +461,7 @@ class LicenseService
         if (is_null($license->bound_domain)) {
             // First time (Primary Binding)
             $license->update([
-                'bound_domain' => $domain,
+                'bound_domain' => $normalizedDomain,
                 'bound_ip' => $ip,
                 'bound_fingerprint' => $fingerprint,
                 'activated_at' => Carbon::now(),
@@ -611,18 +616,20 @@ class LicenseService
         ?string $fingerprint = null,
         ?string $reason      = null,
     ): array {
+        $normalizedDomain = $this->normalizeDomain($domain);
+
         // 1. Verify domain is authorised (has a successful activation history)
-        $domainIsAuthorised = ($license->bound_domain && $this->normalizeDomain($license->bound_domain) === $this->normalizeDomain($domain))
+        $domainIsAuthorised = ($license->bound_domain && $this->normalizeDomain($license->bound_domain) === $normalizedDomain)
             || LicenseActivation::where('license_id', $license->id)
                 ->where('status', 'success')
-                ->where('request_domain', $domain)
-                ->exists();
+                ->get()
+                ->contains(fn ($act) => $this->normalizeDomain($act->request_domain) === $normalizedDomain);
 
         if (! $domainIsAuthorised) {
             $previouslyDeactivated = LicenseActivation::where('license_id', $license->id)
-                ->where('request_domain', $domain)
                 ->where('failure_reason', 'Deactivated by client')
-                ->exists();
+                ->get()
+                ->contains(fn ($act) => $this->normalizeDomain($act->request_domain) === $normalizedDomain);
 
             if ($previouslyDeactivated || ($license->status === 'inactive' && $license->bound_domain === null)) {
                 return [
@@ -653,13 +660,19 @@ class LicenseService
         }
 
         // 3. Mark all successful activation rows for this domain as deactivated
-        LicenseActivation::where('license_id', $license->id)
-            ->where('request_domain', $domain)
+        $matchingActivationIds = LicenseActivation::where('license_id', $license->id)
             ->where('status', 'success')
-            ->update(['status' => 'failed', 'failure_reason' => 'Deactivated by client']);
+            ->get()
+            ->filter(fn ($act) => $this->normalizeDomain($act->request_domain) === $normalizedDomain)
+            ->pluck('id');
+
+        if ($matchingActivationIds->isNotEmpty()) {
+            LicenseActivation::whereIn('id', $matchingActivationIds)
+                ->update(['status' => 'failed', 'failure_reason' => 'Deactivated by client']);
+        }
 
         // 4. Clear primary binding if this domain IS the primary binding
-        $isPrimary = $license->bound_domain && $this->normalizeDomain($license->bound_domain) === $this->normalizeDomain($domain);
+        $isPrimary = $license->bound_domain && $this->normalizeDomain($license->bound_domain) === $normalizedDomain;
         $updates   = [];
 
         if ($isPrimary) {
@@ -696,9 +709,9 @@ class LicenseService
         return ['status' => true, 'message' => 'License deactivated successfully.'];
     }
 
-    private function normalizeDomain(?string $domain): ?string
+    public function normalizeDomain(?string $domain): ?string
     {
-        return in_array($domain, ['localhost', '127.0.0.1'], true) ? '127.0.0.1' : $domain;
+        return DomainNormalizer::normalize($domain);
     }
 
     public function resetLicense(License $license, $admin, string $reason)
