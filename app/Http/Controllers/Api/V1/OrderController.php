@@ -195,6 +195,7 @@ class OrderController extends Controller
         try {
             DB::transaction(function () use ($order, $request, $exchangeRate, $baseAmount, $path, $receiptHash) {
                 $order->payments()->create([
+                    'license_id'           => $order->license_id,
                     'user_id'              => $request->user()->id,
                     'gateway'              => 'offline',
                     'amount'               => $order->total_amount,

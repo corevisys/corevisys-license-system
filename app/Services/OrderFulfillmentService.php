@@ -57,6 +57,9 @@ class OrderFulfillmentService
 
                 if ($order->payment) {
                     $paymentUpdates = ['status' => 'verified', 'applied_at' => \Carbon\Carbon::now()];
+                    if ($license instanceof \App\Models\License) {
+                        $paymentUpdates['license_id'] = $license->id;
+                    }
                     if (!empty($paymentData['transaction_id'])) {
                         $paymentUpdates['transaction_id'] = $paymentData['transaction_id'];
                     }

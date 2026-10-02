@@ -471,6 +471,7 @@ Route::middleware('auth')->group(function () {
         // Ensure a payment record exists so the callback can resolve + fulfill.
         $payment = \App\Models\Payment::create([
             'order_id' => $order->id,
+            'license_id' => $license->id,
             'user_id' => auth()->id(),
             'gateway' => $gateway,
             'amount' => $price->amount,
@@ -545,6 +546,7 @@ Route::middleware('auth')->group(function () {
         // Ensure a payment record exists so the callback can resolve + fulfill.
         $payment = \App\Models\Payment::create([
             'order_id' => $order->id,
+            'license_id' => $license->id,
             'user_id' => auth()->id(),
             'gateway' => $gateway,
             'amount' => $price->amount,

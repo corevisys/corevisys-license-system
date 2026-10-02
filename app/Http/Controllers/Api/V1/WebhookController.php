@@ -213,7 +213,10 @@ class WebhookController extends Controller
             if ($paymentIntent) {
                 $q->orWhere('transaction_id', $paymentIntent);
             }
-            $q->where('order_id', $license->order_id)->update(['status' => 'verified']);
+            $q->where('order_id', $license->order_id)->update([
+                'status' => 'verified',
+                'license_id' => $license->id,
+            ]);
         }
     }
 
