@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ProcessLicenseRenewal;
 use App\Models\AuditLog;
 use App\Models\License;
 use App\Models\Order;
@@ -18,15 +19,6 @@ use Tests\TestCase;
 
 /**
  * FIX-005 / BUG-001: Comprehensive renewal payment verification tests.
- *
- * Verifies that:
- * 1. Initial purchase payment cannot be reused for renewal.
- * 2. A second consecutive renewal requires a second payment.
- * 3. Running the renewal command twice does not extend or charge twice.
- * 4. Payment failure moves to grace/past_due with customer notification.
- * 5. Expired grace period marks license as expired and notifies customer.
- * 6. bKash recurring subscription charging is covered.
- * 7. Stripe renewal paths are covered.
  */
 class ProcessRenewalsLiveTest extends TestCase
 {
@@ -54,19 +46,8 @@ class ProcessRenewalsLiveTest extends TestCase
             'total_amount' => 50,
             'currency'     => 'USD',
             'status'       => 'completed',
-            'created_at'   => $orderTime,
         ]);
-
-        // Initial purchase payment created at order time (30 days ago)
-        Payment::create([
-            'order_id'       => $order->id,
-            'user_id'        => $user->id,
-            'gateway'        => 'stripe',
-            'transaction_id' => 'tx_initial_order_purchase',
-            'amount'         => 50,
-            'status'         => 'verified',
-            'created_at'     => $orderTime,
-        ]);
+        $order->forceFill(['created_at' => $orderTime, 'updated_at' => $orderTime])->save();
 
         $pastExpiry = Carbon::now()->subMinute();
         $license = License::create([
@@ -78,15 +59,27 @@ class ProcessRenewalsLiveTest extends TestCase
             'type'             => 'subscription',
             'status'           => 'active',
             'auto_renew'       => true,
-            'created_at'       => $orderTime,
             'expires_at'       => $pastExpiry,
             'next_billing_at'  => $pastExpiry,
         ]);
+        $license->forceFill(['created_at' => $orderTime, 'updated_at' => $orderTime])->save();
+
+        // Initial purchase payment was consumed at order fulfillment time (applied_at is set)
+        $payment = Payment::create([
+            'order_id'       => $order->id,
+            'user_id'        => $user->id,
+            'gateway'        => 'stripe',
+            'transaction_id' => 'tx_initial_order_purchase',
+            'amount'         => 50,
+            'status'         => 'verified',
+            'applied_at'     => $orderTime,
+        ]);
+        $payment->forceFill(['created_at' => $orderTime, 'updated_at' => $orderTime])->save();
 
         $service = new LicenseService();
         $results = $service->processRenewals();
 
-        // Must FAIL: initial purchase payment cannot satisfy renewal
+        // Must FAIL: initial purchase payment is consumed and cannot satisfy renewal
         $this->assertSame(0, $results['success']);
         $this->assertSame(1, $results['failed']);
 
@@ -110,29 +103,14 @@ class ProcessRenewalsLiveTest extends TestCase
             'billing_period' => 30,
         ]);
 
-        $initialTime = Carbon::now()->subDays(60);
         $order = Order::create([
             'order_number' => 'ORD-CONSECUTIVE-1',
             'user_id'      => $user->id,
             'total_amount' => 50,
             'currency'     => 'USD',
             'status'       => 'completed',
-            'created_at'   => $initialTime,
         ]);
 
-        // Initial purchase payment (60 days ago)
-        Payment::create([
-            'order_id'       => $order->id,
-            'user_id'        => $user->id,
-            'gateway'        => 'stripe',
-            'transaction_id' => 'tx_init_consec',
-            'amount'         => 50,
-            'status'         => 'verified',
-            'created_at'     => $initialTime,
-        ]);
-
-        // License was due for Cycle 1 at subDays(30)
-        $cycle1Due = Carbon::now()->subDays(30);
         $license = License::create([
             'user_id'          => $user->id,
             'product_id'       => $product->id,
@@ -142,20 +120,20 @@ class ProcessRenewalsLiveTest extends TestCase
             'type'             => 'subscription',
             'status'           => 'active',
             'auto_renew'       => true,
-            'created_at'       => $initialTime,
-            'expires_at'       => $cycle1Due,
-            'next_billing_at'  => $cycle1Due,
+            'expires_at'       => Carbon::now()->subMinute(),
+            'next_billing_at'  => Carbon::now()->subMinute(),
         ]);
 
         // Payment 1 created for Cycle 1
-        Payment::create([
+        $payment1 = Payment::create([
             'order_id'       => $order->id,
+            'license_id'     => $license->id,
             'user_id'        => $user->id,
             'gateway'        => 'stripe',
             'transaction_id' => 'tx_cycle_1_payment',
             'amount'         => 50,
             'status'         => 'verified',
-            'created_at'     => $cycle1Due,
+            'applied_at'     => null, // unconsumed
         ]);
 
         $service = new LicenseService();
@@ -164,8 +142,10 @@ class ProcessRenewalsLiveTest extends TestCase
         $res1 = $service->processRenewals();
         $this->assertSame(1, $res1['success']);
         $license->refresh();
+        $payment1->refresh();
+        $this->assertNotNull($payment1->applied_at, 'Payment 1 must be marked consumed upon use.');
 
-        // Advance license to Cycle 2 due date (now)
+        // Advance license to Cycle 2 due date
         $license->update([
             'expires_at'      => Carbon::now()->subMinute(),
             'next_billing_at' => Carbon::now()->subMinute(),
@@ -179,12 +159,13 @@ class ProcessRenewalsLiveTest extends TestCase
         // Now record Payment 2 for Cycle 2
         Payment::create([
             'order_id'       => $order->id,
+            'license_id'     => $license->id,
             'user_id'        => $user->id,
             'gateway'        => 'stripe',
             'transaction_id' => 'tx_cycle_2_payment',
             'amount'         => 50,
             'status'         => 'verified',
-            'created_at'     => Carbon::now(),
+            'applied_at'     => null,
         ]);
 
         // Run renewal again -> must SUCCEED with Payment 2
@@ -212,7 +193,6 @@ class ProcessRenewalsLiveTest extends TestCase
             'total_amount' => 100,
             'currency'     => 'USD',
             'status'       => 'completed',
-            'created_at'   => Carbon::now()->subDays(30),
         ]);
 
         $license = License::create([
@@ -224,20 +204,20 @@ class ProcessRenewalsLiveTest extends TestCase
             'type'             => 'subscription',
             'status'           => 'active',
             'auto_renew'       => true,
-            'created_at'       => Carbon::now()->subDays(30),
             'expires_at'       => Carbon::now()->subMinute(),
             'next_billing_at'  => Carbon::now()->subMinute(),
         ]);
 
-        // Verified payment for this renewal cycle
+        // Verified unconsumed payment
         Payment::create([
             'order_id'       => $order->id,
+            'license_id'     => $license->id,
             'user_id'        => $user->id,
             'gateway'        => 'stripe',
             'transaction_id' => 'tx_idemp_payment',
             'amount'         => 100,
             'status'         => 'verified',
-            'created_at'     => Carbon::now(),
+            'applied_at'     => null,
         ]);
 
         $service = new LicenseService();
@@ -248,7 +228,7 @@ class ProcessRenewalsLiveTest extends TestCase
         $license->refresh();
         $firstExpiry = $license->expires_at->copy();
 
-        // Second run immediately -> not due, must NOT extend again
+        // Second run immediately -> license is not due, must NOT extend again
         $res2 = $service->processRenewals();
         $this->assertSame(0, $res2['success']);
         $this->assertSame(0, $res2['failed']);
@@ -277,7 +257,6 @@ class ProcessRenewalsLiveTest extends TestCase
             'total_amount' => 50,
             'currency'     => 'USD',
             'status'       => 'completed',
-            'created_at'   => Carbon::now()->subDays(30),
         ]);
 
         $pastExpiry = Carbon::now()->subMinute();
@@ -290,7 +269,6 @@ class ProcessRenewalsLiveTest extends TestCase
             'type'             => 'subscription',
             'status'           => 'active',
             'auto_renew'       => true,
-            'created_at'       => Carbon::now()->subDays(30),
             'expires_at'       => $pastExpiry,
             'next_billing_at'  => $pastExpiry,
         ]);
@@ -334,7 +312,6 @@ class ProcessRenewalsLiveTest extends TestCase
             'total_amount' => 50,
             'currency'     => 'USD',
             'status'       => 'completed',
-            'created_at'   => Carbon::now()->subDays(40),
         ]);
 
         $pastTime = Carbon::now()->subDays(8);
@@ -347,7 +324,6 @@ class ProcessRenewalsLiveTest extends TestCase
             'type'             => 'subscription',
             'status'           => 'active',
             'auto_renew'       => true,
-            'created_at'       => Carbon::now()->subDays(40),
             'expires_at'       => $pastTime,
             'next_billing_at'  => $pastTime,
             'grace_expires_at' => Carbon::now()->subDay(), // Grace ended yesterday
@@ -371,125 +347,549 @@ class ProcessRenewalsLiveTest extends TestCase
         Mail::assertSentCount(1);
     }
 
-    public function test_renewal_fails_when_payment_record_status_is_failed(): void
+    public function test_job_path_grants_grace_once_then_expires_and_no_infinite_grace(): void
     {
+        Mail::fake();
+
         $user = User::factory()->create();
         $product = Product::factory()->create();
-        ProductPrice::create([
-            'product_id'     => $product->id,
-            'currency'       => 'USD',
-            'amount'         => 30,
+        $product->prices()->create([
             'type'           => 'subscription',
+            'amount'         => 30,
+            'currency'       => 'USD',
             'billing_period' => 30,
         ]);
 
         $order = Order::create([
-            'order_number' => 'ORD-FAIL-1',
+            'order_number' => 'ORD-JOB-LIFECYCLE-1',
             'user_id'      => $user->id,
             'total_amount' => 30,
             'currency'     => 'USD',
-            'status'       => 'pending',
-            'created_at'   => Carbon::now()->subDays(30),
+            'status'       => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id'          => $user->id,
+            'product_id'       => $product->id,
+            'order_id'         => $order->id,
+            'license_key_hash' => hash('sha256', 'JOB-KEY-salt'),
+            'secret_salt'      => 'salt',
+            'type'             => 'subscription',
+            'status'           => 'active',
+            'auto_renew'       => true,
+            'expires_at'       => Carbon::now()->subMinute(),
+            'next_billing_at'  => Carbon::now()->subMinute(),
+            'grace_expires_at' => null, // Initial: null
+        ]);
+
+        $job = new ProcessLicenseRenewal($license);
+
+        // Run 1: Payment fails -> Grace granted (7 days) and notice sent
+        $job->handle();
+        $license->refresh();
+        $this->assertNotNull($license->grace_expires_at);
+        $this->assertTrue($license->grace_expires_at->isFuture());
+        $this->assertSame('active', $license->status);
+        Mail::assertSentCount(1);
+
+        $originalGraceExpiry = $license->grace_expires_at->copy();
+
+        // Run 2: While grace is still active, must NOT grant a new grace window and NOT send duplicate email
+        $job->handle();
+        $license->refresh();
+        $this->assertEquals($originalGraceExpiry->toIso8601String(), $license->grace_expires_at->toIso8601String());
+        Mail::assertSentCount(1);
+
+        // Advance time: Grace period expires
+        $license->update(['grace_expires_at' => Carbon::now()->subHour()]);
+
+        // Run 3: Grace has expired -> Must mark license as expired, disable auto_renew, and send expiration notice
+        $job->handle();
+        $license->refresh();
+        $this->assertSame('expired', $license->status);
+        $this->assertFalse((bool) $license->auto_renew);
+        Mail::assertSentCount(2);
+
+        // Run 4: Repeated run after expiry -> Must do nothing, must NOT grant new grace
+        $job->handle();
+        $license->refresh();
+        $this->assertSame('expired', $license->status);
+        $this->assertFalse((bool) $license->auto_renew);
+        Mail::assertSentCount(2); // No new mail
+    }
+
+    public function test_suspended_license_is_never_renewed_or_reactivated(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create([
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-SUSP-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'SUSP-KEY-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'suspended', // Suspended!
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        // Even with a verified payment linked
+        Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'stripe',
+            'transaction_id' => 'tx_susp_pay',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+        $this->assertFalse($service->renewLicense($license));
+
+        $license->refresh();
+        $this->assertSame('suspended', $license->status);
+        $this->assertTrue(
+            AuditLog::where('action', 'license_renewal_blocked_disallowed_status')
+                ->where('auditable_id', $license->id)
+                ->exists()
+        );
+    }
+
+    public function test_revoked_license_is_never_renewed_or_reactivated(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create([
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-REVOKED-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'REVOKED-KEY-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'revoked', // Revoked!
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
         ]);
 
         Payment::create([
-            'order_id'       => $order->id,
-            'user_id'        => $user->id,
-            'gateway'        => 'stripe',
-            'transaction_id' => 'tx_failed_1',
-            'amount'         => 30,
-            'status'         => 'failed',
-            'created_at'     => Carbon::now(),
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'stripe',
+            'transaction_id' => 'tx_rev_pay',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+        $this->assertFalse($service->renewLicense($license));
+
+        $license->refresh();
+        $this->assertSame('revoked', $license->status);
+    }
+
+    public function test_cancelled_license_is_never_renewed_or_reactivated(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create([
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-CANCELLED-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'CANCELLED-KEY-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'cancelled', // Cancelled!
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'stripe',
+            'transaction_id' => 'tx_canc_pay',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+        $this->assertFalse($service->renewLicense($license));
+
+        $license->refresh();
+        $this->assertSame('cancelled', $license->status);
+    }
+
+    public function test_renewal_rejects_payment_for_different_license(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create([
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-MULTI-LIC-1',
+            'user_id' => $user->id,
+            'total_amount' => 100,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $licenseA = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'LIC-A-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        $licenseB = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'LIC-B-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        // Payment is explicitly linked to License B only
+        Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $licenseB->id,
+            'user_id' => $user->id,
+            'gateway' => 'stripe',
+            'transaction_id' => 'tx_for_b_only',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+
+        // License A must FAIL: no payment linked to License A
+        $this->assertFalse($service->renewLicense($licenseA));
+
+        // License B must SUCCEED with its linked payment
+        $this->assertTrue($service->renewLicense($licenseB));
+    }
+
+    public function test_renewal_rejects_payment_already_consumed(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create([
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-CONSUMED-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'CONSUMED-KEY-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        // Payment is verified, but applied_at is ALREADY set (consumed)
+        Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'stripe',
+            'transaction_id' => 'tx_already_consumed',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => Carbon::now()->subHour(),
+        ]);
+
+        $service = new LicenseService();
+        $this->assertFalse($service->renewLicense($license));
+    }
+
+    public function test_renewal_rejects_payment_with_insufficient_amount(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create([
+            'type' => 'subscription',
+            'amount' => 100, // Price is $100
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-INSUFFICIENT-1',
+            'user_id' => $user->id,
+            'total_amount' => 100,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'INSUFFICIENT-KEY-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        // Payment is only $20 (insufficient)
+        Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'stripe',
+            'transaction_id' => 'tx_too_low',
+            'amount' => 20,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+        $this->assertFalse($service->renewLicense($license));
+    }
+
+    public function test_advance_renewal_payment_made_before_expiry_is_accepted(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create([
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-ADVANCE-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'ADVANCE-KEY-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        // Payment was made 3 days before expiry (advance renewal)
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'stripe',
+            'transaction_id' => 'tx_advance_renewal',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+        $payment->forceFill(['created_at' => Carbon::now()->subDays(3)])->save();
+
+        $service = new LicenseService();
+        $this->assertTrue($service->renewLicense($license));
+
+        $license->refresh();
+        $this->assertTrue($license->expires_at->isFuture());
+        $payment->refresh();
+        $this->assertNotNull($payment->applied_at);
+    }
+
+    public function test_stripe_managed_subscription_is_bypassed_by_renewal_service_and_job(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create([
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-STRIPE-SUB-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'STRIPE-SUB-KEY-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+            'gateway_subscription_id' => 'sub_stripe_real_123', // Stripe sub
+        ]);
+
+        $service = new LicenseService();
+
+        // In batch processRenewals: query excludes sub_% subscriptions
+        $res = $service->processRenewals();
+        $this->assertSame(0, $res['success']);
+        $this->assertSame(0, $res['failed']); // Not queried
+
+        // In direct call: renewLicense guards and returns false
+        $this->assertFalse($service->renewLicense($license));
+
+        // In Job: ProcessLicenseRenewal guards and does nothing
+        $job = new ProcessLicenseRenewal($license);
+        $job->handle();
+        $license->refresh();
+        $this->assertNull($license->grace_expires_at, 'Stripe subscription should not enter grace via cron.');
+    }
+
+    public function test_renewal_aligns_next_billing_at_to_new_expiry_date(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create([
+            'type' => 'subscription',
+            'amount' => 100,
+            'currency' => 'USD',
+            'billing_period' => 30, // 30 days
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-NEXT-BILLING-1',
+            'user_id' => $user->id,
+            'total_amount' => 100,
+            'currency' => 'USD',
+            'status' => 'completed',
         ]);
 
         $pastExpiry = Carbon::now()->subMinute();
         $license = License::create([
-            'user_id'          => $user->id,
-            'product_id'       => $product->id,
-            'order_id'         => $order->id,
-            'license_key_hash' => hash('sha256', 'FAIL-KEY-salt'),
-            'secret_salt'      => 'salt',
-            'type'             => 'subscription',
-            'status'           => 'active',
-            'auto_renew'       => true,
-            'created_at'       => Carbon::now()->subDays(30),
-            'expires_at'       => $pastExpiry,
-            'next_billing_at'  => $pastExpiry,
-        ]);
-
-        $service = new LicenseService();
-        $results = $service->processRenewals();
-
-        $this->assertSame(0, $results['success']);
-        $this->assertSame(1, $results['failed']);
-
-        $license->refresh();
-        $this->assertEquals($pastExpiry->toIso8601String(), $license->expires_at->toIso8601String());
-        $this->assertNotNull($license->grace_expires_at);
-    }
-
-    public function test_renewal_succeeds_when_verified_payment_record_exists(): void
-    {
-        $user = User::factory()->create();
-        $product = Product::factory()->create();
-        ProductPrice::create([
-            'product_id'     => $product->id,
-            'currency'       => 'USD',
-            'amount'         => 100,
-            'type'           => 'subscription',
-            'billing_period' => 30,
-        ]);
-
-        $order = Order::create([
-            'order_number' => 'ORD-VERIFIED-1',
-            'user_id'      => $user->id,
-            'total_amount' => 100,
-            'currency'     => 'USD',
-            'status'       => 'completed',
-            'created_at'   => Carbon::now()->subDays(30),
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'NEXT-BILL-KEY-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => $pastExpiry,
+            'next_billing_at' => $pastExpiry,
         ]);
 
         Payment::create([
-            'order_id'       => $order->id,
-            'user_id'        => $user->id,
-            'gateway'        => 'stripe',
-            'transaction_id' => 'tx_verified_cycle_payment',
-            'amount'         => 100,
-            'status'         => 'verified',
-            'created_at'     => Carbon::now(),
-        ]);
-
-        $license = License::create([
-            'user_id'          => $user->id,
-            'product_id'       => $product->id,
-            'order_id'         => $order->id,
-            'license_key_hash' => hash('sha256', 'VERIFIED-KEY-salt'),
-            'secret_salt'      => 'salt',
-            'type'             => 'subscription',
-            'status'           => 'active',
-            'auto_renew'       => true,
-            'created_at'       => Carbon::now()->subDays(30),
-            'expires_at'       => Carbon::now()->subMinute(),
-            'next_billing_at'  => Carbon::now()->subMinute(),
-            'grace_expires_at' => Carbon::now()->addDays(2),
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'stripe',
+            'transaction_id' => 'tx_align_billing',
+            'amount' => 100,
+            'status' => 'verified',
+            'applied_at' => null,
         ]);
 
         $service = new LicenseService();
-        $results = $service->processRenewals();
-
-        $this->assertSame(1, $results['success']);
-        $this->assertSame(0, $results['failed']);
+        $this->assertTrue($service->renewLicense($license));
 
         $license->refresh();
-        $this->assertTrue($license->expires_at->isFuture());
-        $this->assertTrue($license->next_billing_at->isFuture());
-        $this->assertNull($license->grace_expires_at);
-
-        $this->assertTrue(
-            AuditLog::where('action', 'license_renewed')
-                ->where('auditable_id', $license->id)
-                ->exists()
-        );
+        // next_billing_at MUST be equal to new expires_at (when renewal is due), NOT two periods ahead!
+        $this->assertEquals($license->expires_at->toIso8601String(), $license->next_billing_at->toIso8601String());
     }
 
     public function test_renewal_charges_bkash_recurring_subscription_when_configured(): void
@@ -531,7 +931,6 @@ class ProcessRenewalsLiveTest extends TestCase
             'currency'       => 'BDT',
             'status'         => 'completed',
             'payment_method' => 'bkash',
-            'created_at'     => Carbon::now()->subDays(30),
         ]);
 
         $license = License::create([
@@ -543,7 +942,6 @@ class ProcessRenewalsLiveTest extends TestCase
             'type'                    => 'subscription',
             'status'                  => 'active',
             'auto_renew'              => true,
-            'created_at'              => Carbon::now()->subDays(30),
             'expires_at'              => Carbon::now()->subMinute(),
             'next_billing_at'         => Carbon::now()->subMinute(),
             'gateway_subscription_id' => 'bkash_sub_live_1',
@@ -561,9 +959,114 @@ class ProcessRenewalsLiveTest extends TestCase
 
         $this->assertDatabaseHas('payments', [
             'order_id'       => $order->id,
+            'license_id'     => $license->id,
             'gateway'        => 'bkash',
             'transaction_id' => 'bkash-renew-live-1',
             'status'         => 'verified',
         ]);
     }
+
+    public function test_renewal_rejects_payment_with_mismatched_currency(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create([
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        // Order made in BDT instead of USD
+        $order = Order::create([
+            'order_number' => 'ORD-CURR-MISMATCH-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'BDT',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'CURR-MISMATCH-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_mismatch_curr',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+        $this->assertFalse($service->renewLicense($license));
+        $this->assertNull(Payment::where('transaction_id', 'tx_mismatch_curr')->first()->applied_at);
+    }
+
+    public function test_renewal_payment_consumed_atomically_preventing_concurrent_double_renewal(): void
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create();
+        $product->prices()->create([
+            'type' => 'subscription',
+            'amount' => 50,
+            'currency' => 'USD',
+            'billing_period' => 30,
+        ]);
+
+        $order = Order::create([
+            'order_number' => 'ORD-CONCURRENT-1',
+            'user_id' => $user->id,
+            'total_amount' => 50,
+            'currency' => 'USD',
+            'status' => 'completed',
+        ]);
+
+        $license = License::create([
+            'user_id' => $user->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+            'license_key_hash' => hash('sha256', 'CONCURRENT-salt'),
+            'secret_salt' => 'salt',
+            'type' => 'subscription',
+            'status' => 'active',
+            'auto_renew' => true,
+            'expires_at' => Carbon::now()->subMinute(),
+            'next_billing_at' => Carbon::now()->subMinute(),
+        ]);
+
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'license_id' => $license->id,
+            'user_id' => $user->id,
+            'gateway' => 'manual',
+            'transaction_id' => 'tx_atomic_consume',
+            'amount' => 50,
+            'status' => 'verified',
+            'applied_at' => null,
+        ]);
+
+        $service = new LicenseService();
+
+        // First process acquires and consumes payment inside transaction
+        $this->assertTrue($service->renewLicense($license));
+        $payment->refresh();
+        $this->assertNotNull($payment->applied_at);
+
+        // Second concurrent process attempting to qualify the same payment gets false
+        $this->assertFalse($service->qualifyOrChargeRenewalPayment($license, $product->prices()->first()));
+    }
 }
+
