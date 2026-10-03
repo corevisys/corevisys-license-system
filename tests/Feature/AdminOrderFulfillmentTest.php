@@ -102,6 +102,18 @@ class AdminOrderFulfillmentTest extends TestCase
         $this->assertDatabaseCount('licenses', 0);
     }
 
+    public function test_fulfillment_exception_is_rethrown_not_swallowed(): void
+    {
+        // An order with no items (pending) has no OrderItem, so the transaction
+        // closure throws RuntimeException — the catch block must re-throw it.
+        [, $order] = $this->makeOrder('pending', 'pending', false);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/has no items to fulfill/');
+
+        app(\App\Services\OrderFulfillmentService::class)->fulfillOrder($order);
+    }
+
     private function makeOrder(string $status, string $paymentStatus, bool $withItem = true): array
     {
         $admin = User::factory()->create(['role' => 'admin']);

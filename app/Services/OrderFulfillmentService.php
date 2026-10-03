@@ -99,7 +99,5 @@ class OrderFulfillmentService
             ]);
             throw $e; // Re-throw to ensure caller knows it failed (e.g., specific error handling)
         }
-        
-        return null;
     }
 }
