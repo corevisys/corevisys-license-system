@@ -111,6 +111,7 @@ return [
     'license_pepper' => env('LICENSE_PEPPER'),
     'license_fallback_rate_limit' => (int) env('LICENSE_FALLBACK_RATE_LIMIT', 30),
     'license_fallback_rate_limit_window' => (int) env('LICENSE_FALLBACK_RATE_LIMIT_WINDOW', 60),
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
 
     /*
     |--------------------------------------------------------------------------

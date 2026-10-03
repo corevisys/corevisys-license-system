@@ -17,8 +17,13 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             SystemSettingsSeeder::class,
-            UserSeeder::class,
-            // LicenseSeeder::class,
         ]);
+
+        if (!app()->environment('production')) {
+            $this->call([
+                UserSeeder::class,
+                // LicenseSeeder::class,
+            ]);
+        }
     }
 }

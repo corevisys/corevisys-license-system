@@ -13,6 +13,10 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
+        if (app()->environment('production')) {
+            return;
+        }
+
         // Create 1 Admin User
         User::factory()->create([
             'name' => 'Admin User',
