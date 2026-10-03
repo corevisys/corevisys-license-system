@@ -150,11 +150,6 @@ parameters:
 			count: 1
 			path: app/Http/Controllers/Api/V1/WebhookController.php
 
-		-
-			message: '#^Parameter \#1 \$user of class Illuminate\\Auth\\Events\\Verified constructor expects Illuminate\\Contracts\\Auth\\MustVerifyEmail, App\\Models\\User\|null given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Http/Controllers/Auth/VerifyEmailController.php
 
 		-
 			message: '#^Unsafe access to private property App\\Models\\SystemSetting\:\:\$MISSING through static\:\:\.$#'
@@ -246,11 +241,6 @@ parameters:
 			count: 1
 			path: app/Services/OrderFulfillmentService.php
 
-		-
-			message: '#^Unreachable statement \- code above always terminates\.$#'
-			identifier: deadCode.unreachable
-			count: 1
-			path: app/Services/OrderFulfillmentService.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\Order\:\:\$items\.$#'

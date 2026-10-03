@@ -44,3 +44,11 @@ test('email is not verified with invalid hash', function () {
 
     expect($user->fresh()->hasVerifiedEmail())->toBeFalse();
 });
+
+test('user with null email_verified_at is not locked out of dashboard', function () {
+    $user = User::factory()->unverified()->create();
+
+    $response = $this->actingAs($user)->get('/dashboard');
+
+    $response->assertStatus(200);
+});
