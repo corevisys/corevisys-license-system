@@ -348,4 +348,52 @@ class DeactivationTest extends TestCase
 
         $response->assertStatus(429);
     }
+
+    #[Test]
+    public function deactivation_of_revoked_license_writes_audit_log_and_preserves_status(): void
+    {
+        $license = $this->makeActiveLicense('example.com', 'fp-abc123');
+        $license->update(['status' => 'revoked']);
+        $rawKey = app(LicenseService::class)->rotateLicenseKey($license, 'TEST-ABCD-EFGH-IJKL')->raw_key;
+
+        $response = $this->postJson('/api/v1/license/deactivate', [
+            'license_key'  => $rawKey,
+            'domain'       => 'example.com',
+            'ip'           => '1.2.3.4',
+            'fingerprint'  => 'fp-abc123',
+            'product_code' => 'corevisys-crm',
+        ]);
+
+        $response->assertOk()->assertJson(['status' => true]);
+        $this->assertDatabaseHas('licenses', ['id' => $license->id, 'status' => 'revoked']);
+        $this->assertDatabaseHas('audit_logs', [
+            'action'         => 'license_deactivated',
+            'auditable_type' => \App\Models\License::class,
+            'auditable_id'   => $license->id,
+        ]);
+    }
+
+    #[Test]
+    public function deactivation_of_suspended_license_writes_audit_log_and_preserves_status(): void
+    {
+        $license = $this->makeActiveLicense('example.com', 'fp-abc123');
+        $license->update(['status' => 'suspended']);
+        $rawKey = app(LicenseService::class)->rotateLicenseKey($license, 'TEST-ABCD-EFGH-IJKL')->raw_key;
+
+        $response = $this->postJson('/api/v1/license/deactivate', [
+            'license_key'  => $rawKey,
+            'domain'       => 'example.com',
+            'ip'           => '1.2.3.4',
+            'fingerprint'  => 'fp-abc123',
+            'product_code' => 'corevisys-crm',
+        ]);
+
+        $response->assertOk()->assertJson(['status' => true]);
+        $this->assertDatabaseHas('licenses', ['id' => $license->id, 'status' => 'suspended']);
+        $this->assertDatabaseHas('audit_logs', [
+            'action'         => 'license_deactivated',
+            'auditable_type' => \App\Models\License::class,
+            'auditable_id'   => $license->id,
+        ]);
+    }
 }
