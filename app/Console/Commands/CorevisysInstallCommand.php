@@ -70,6 +70,24 @@ class CorevisysInstallCommand extends Command
             }
         }
 
+        // Show payment gateway mode warning
+        $bkashSandbox = \App\Models\SystemSetting::getCached('gateway_bkash_sandbox', '?');
+        $stripeActive  = \App\Models\SystemSetting::getCached('gateway_stripe_active', '0');
+        $bkashActive   = \App\Models\SystemSetting::getCached('gateway_bkash_active', '0');
+        $this->newLine();
+        $this->warn('================================================================');
+        $this->warn('  PAYMENT GATEWAY STATUS — verify before accepting real payments');
+        $this->warn('================================================================');
+        $this->line('  Stripe  : ' . ($stripeActive === '1' ? 'ENABLED (live)' : 'DISABLED'));
+        $this->line('  bKash   : ' . ($bkashActive === '1' ? 'ENABLED' : 'DISABLED') .
+            ' | Mode: ' . ($bkashSandbox === '0' ? 'PRODUCTION (live payments)' : 'SANDBOX (test only)'));
+        if ($bkashSandbox !== '0') {
+            $this->error('  *** bKash is in SANDBOX mode. Real payments will NOT be processed. ***');
+            $this->line('  To use live payments: set gateway_bkash_sandbox=0 in system_settings.');
+        }
+        $this->warn('================================================================');
+        $this->newLine();
+
         // 4. Admin User Creation
         $this->line('4. Checking administrator account...');
         if (!User::where('role', 'admin')->exists()) {

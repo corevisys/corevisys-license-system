@@ -27,8 +27,9 @@ class SystemSettingsSeeder extends Seeder
         SystemSetting::firstOrCreate(['key' => 'gateway_nagad_active'], ['value' => '0']);
         SystemSetting::firstOrCreate(['key' => 'gateway_rocket_active'], ['value' => '0']);
 
-        // bKash Tokenized Checkout (Sandbox credentials)
-        SystemSetting::firstOrCreate(['key' => 'gateway_bkash_sandbox'], ['value' => '1']);
+        // bKash Tokenized Checkout (default sandbox OFF in production; ON in other envs)
+        $bkashSandboxDefault = app()->environment('production') ? '0' : '1';
+        SystemSetting::firstOrCreate(['key' => 'gateway_bkash_sandbox'], ['value' => $bkashSandboxDefault]);
         SystemSetting::firstOrCreate(['key' => 'gateway_bkash_username'], ['value' => env('BKASH_USERNAME', '')]);
         SystemSetting::firstOrCreate(['key' => 'gateway_bkash_password'], ['value' => env('BKASH_PASSWORD', '')]);
         SystemSetting::firstOrCreate(['key' => 'gateway_bkash_app_key'], ['value' => env('BKASH_APP_KEY', '')]);

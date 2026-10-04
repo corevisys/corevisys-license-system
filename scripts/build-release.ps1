@@ -76,28 +76,28 @@ ForEach-Object {
     if (-not (Test-Path $gi)) { Set-Content -Path $gi -Value "*`n!.gitignore`n" }
 }
 
-# 6. Install production Composer deps — use --no-scripts to avoid package:discover
-#    which requires a configured .env (LICENSE_SIGNING_KEY_ID check in AppServiceProvider).
-#    Instead copy packages.php from the built source repo.
-Write-Host "`n[6/8] Running composer install --no-dev --optimize-autoloader --no-scripts..." -ForegroundColor Yellow
+# 6. Install production Composer deps
+#    Use --no-scripts to skip package:discover (requires .env with real keys).
+#    The deploy doc instructs: after .env is in place, run:
+#       php artisan package:discover --ansi
+#       php artisan optimize:clear
+Write-Host "`n[6/7] Running composer install --no-dev --optimize-autoloader --no-scripts..." -ForegroundColor Yellow
 Push-Location $StagingRoot
 try {
     & composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
     if ($LASTEXITCODE -ne 0) { throw "composer install failed (exit $LASTEXITCODE)" }
 } finally { Pop-Location }
+Write-Host "  Done. No bootstrap/cache files copied — run 'php artisan package:discover' on server after .env is ready." -ForegroundColor Green
 
-# Copy pre-built bootstrap/cache files from source repo
-foreach ($cacheFile in @('packages.php','services.php')) {
-    $src = Join-Path $ProjectRoot "bootstrap\cache\$cacheFile"
-    $dst = Join-Path $StagingRoot "bootstrap\cache\$cacheFile"
-    if (Test-Path $src) {
-        Copy-Item -Path $src -Destination $dst -Force
-        Write-Host "  Copied bootstrap/cache/$cacheFile from source." -ForegroundColor Green
-    }
+# Ensure bootstrap/cache only has the .gitignore placeholder (never config.php, packages.php, etc.)
+$cacheDir = Join-Path $StagingRoot "bootstrap\cache"
+foreach ($f in @('packages.php','services.php','config.php','routes.php')) {
+    $fp = Join-Path $cacheDir $f
+    if (Test-Path $fp) { Remove-Item -Force $fp; Write-Host "  Removed stale $f from bootstrap/cache." -ForegroundColor Yellow }
 }
 
 # 7. Exclusion audit
-Write-Host "`n[7/8] Exclusion audit..." -ForegroundColor Yellow
+Write-Host "`n[7/7] Exclusion audit..." -ForegroundColor Yellow
 $Forbidden = @('\.env$','\.git$','\\tests\\','\\AUDIT\\','node_modules','\.sql$','\.sqlite$','\.bak$','\.key$','installed\.lock$')
 $Violations = @()
 Get-ChildItem -Path $StagingRoot -Recurse -Force | ForEach-Object {
@@ -113,8 +113,8 @@ if ($Violations.Count -gt 0) {
 }
 Write-Host "  PASSED — no forbidden files." -ForegroundColor Green
 
-# 8. Create zip
-Write-Host "`n[8/8] Compressing to $FinalZip..." -ForegroundColor Yellow
+# Zip
+Write-Host "`n[ZIP] Compressing to $FinalZip..." -ForegroundColor Yellow
 if (Test-Path $FinalZip) { Remove-Item -Force $FinalZip }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::CreateFromDirectory($StagingRoot, $FinalZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
