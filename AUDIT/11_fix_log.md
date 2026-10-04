@@ -278,3 +278,53 @@ No major version jumps in production (`packages`) dependencies.
 | `database.zip` | **NOT FOUND** |
 
 The backup directory contains two subdirectories (`LiencesSite/`, `LiencesInstall_VerifyPackage/`) — uncompressed source trees only. No zip archives exist anywhere under `D:\ProjectCorevisys_BACKUP_2026-10-01` or `D:\ProjectCorevisys`. Nothing was deleted.
+
+---
+
+## 9. Phase 10a — Production Readiness (2026-10-03)
+
+### New Commits
+
+| SHA | Description |
+|-----|-------------|
+| `0a7fea8` | `fix(0a): revert MustVerifyEmail contract; use @var docblock for PHPStan null guard; remove stale baseline entries; add unverified-access test` |
+| `1d27f79` | `fix(prod): guard UserSeeder from production; secure session cookie default; add trusted_proxies config key; build-release.ps1 script` |
+| `63e7806` | `docs(audit): write AUDIT/16_production_readiness.md (Phase 10a)` |
+
+### Suite Counts (after 10a)
+
+| Repo | Tests | Assertions |
+|------|-------|------------|
+| LiencesSite | 356 | 1330 |
+| LiencesInstall_VerifyPackage | 408 | 984 |
+
+---
+
+## 10. Phase 10b — Secret Classification + Production Readiness Fixes (2026-10-04)
+
+### New Commits
+
+| SHA | Description |
+|-----|-------------|
+| `e73fffc` | `fix(10b): fingerprint_grace_mode default false; bKash sandbox off in prod; gateway warning in install; build-release --no-scripts fix; FingerprintTest 3 new tests` |
+
+### Changes
+
+| Item | File(s) | Description |
+|------|---------|-------------|
+| **1** | `AUDIT/17_secret_inventory.md` (new) | Full secret scan of 90 commits + 2 dangling. Real credentials found: APP_KEY + RSA key pair + MAIL_PASSWORD in commit `9025665` on `origin/main`. Rotation list included. |
+| **2** | `scripts/build-release.ps1` | Removed bootstrap/cache copy step (packages.php/services.php). Zip now contains NO cache files. Added cleanup loop for stale cache files. Fixed ASCII encoding (removed Unicode em-dashes). Verified: 42.6 MB, 10711 entries, cache_runtime_files=0, env_files=0, sql_files=0, test_files=0. Throwaway boot proof: package:discover, artisan about, route:list all succeed with test keys. |
+| **3** | `config/services.php` | `fingerprint_grace_mode` default changed from `true` to `false` (enforced from day one) |
+| **3** | `tests/Feature/FingerprintTest.php` | Added 3 tests: `test_fingerprint_grace_mode_default_is_false`, `test_fingerprint_grace_mode_explicit_true_with_future_deadline_activates_grace`, `test_fingerprint_grace_mode_explicit_true_with_past_deadline_enforces` |
+| **4** | `AUDIT/16_production_readiness.md` | 6 doc fixes: signing key format (RSA base64, not EC); smoke test 7.5 uses `X-API-Version` header + expects 403 `invalid_license_key`; deploy sequence split into first-deploy (with `corevisys:install`) and subsequent-deploy (with old-code delete + `package:discover` + `optimize:clear`); queue cron uses `--max-time=50`; FINGERPRINT_GRACE_MODE default updated to false. |
+| **5** | `LiencesInstall_VerifyPackage/composer.json` | Added `guzzlehttp/guzzle: ^7.8` to `require-dev` |
+| **6** | `database/seeders/SystemSettingsSeeder.php` | `gateway_bkash_sandbox` defaults `0` when `APP_ENV=production`, `1` otherwise |
+| **6** | `app/Console/Commands/CorevisysInstallCommand.php` | Payment gateway status block printed after seeding: lists Stripe/bKash mode; error if bKash is sandbox |
+
+### Suite Counts (after 10b)
+
+| Repo | Tests | Assertions |
+|------|-------|------------|
+| LiencesSite | 359 | 1334 |
+| LiencesInstall_VerifyPackage | 408 | 984 |
+

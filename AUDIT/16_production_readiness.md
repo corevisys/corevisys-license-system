@@ -185,7 +185,7 @@ Top-level: app/, bootstrap/, config/, database/, deploy/, docs/, public/,
 | `APP_URL` | `https://license.corevisys.com` | Wrong URLs silently |
 | `APP_KEY` | `base64:...` | **Fatal** — encryption fails |
 | `LICENSE_SIGNING_KEY_ID` | `key-2026-01` | **Fatal** — AppServiceProvider throws on boot |
-| `LICENSE_SIGNING_PRIVATE_KEY` | `-----BEGIN EC PRIVATE KEY-----...` | **Fatal** — signing fails |
+| `LICENSE_SIGNING_PRIVATE_KEY` | base64-encoded PEM of RSA key (output of `php artisan license:generate-keys`) | **Fatal** — signing fails |
 | `LICENSE_SIGNING_PUBLIC_KEY` | `-----BEGIN PUBLIC KEY-----...` | **Fatal** — verification fails |
 | `LICENSE_SIGNING_PUBLIC_KEYS` | `{"key-id":"-----BEGIN..."}` JSON | Silent `[]` — old clients can't verify |
 | `LICENSE_SIGNING_REVOKED_KEY_IDS` | *(comma list or empty)* | Silent `[]` — revoked keys still trusted |
@@ -214,8 +214,8 @@ Top-level: app/, bootstrap/, config/, database/, deploy/, docs/, public/,
 | `BKASH_APP_SECRET` | *(live secret)* | — |
 | `BKASH_USERNAME` | *(live username)* | — |
 | `BKASH_PASSWORD` | *(live password)* | — |
-| `FINGERPRINT_ENFORCEMENT_DEADLINE` | `2026-12-01` or empty | Null — grace mode stays on indefinitely |
-| `FINGERPRINT_GRACE_MODE` | `false` | Default `true` — lenient fingerprint checks |
+| `FINGERPRINT_ENFORCEMENT_DEADLINE` | `2026-12-01` or empty | Null — no grace window unless grace_mode also true |
+| `FINGERPRINT_GRACE_MODE` | `false` | **Fixed** (commit `e73fffc`): default is now `false` — enforced from day one |
 
 **Fixed (commit `1d27f79`):**
 - `SESSION_SECURE_COOKIE` now defaults to `true` when `APP_ENV=production`
@@ -249,7 +249,8 @@ Top-level: app/, bootstrap/, config/, database/, deploy/, docs/, public/,
 * * * * * /usr/local/bin/php /home/youraccount/corevisys/artisan schedule:run >> /dev/null 2>&1
 
 # Process queued jobs every minute (shared hosting: no persistent worker)
-* * * * * /usr/local/bin/php /home/youraccount/corevisys/artisan queue:work --stop-when-empty --tries=3 >> /dev/null 2>&1
+# --max-time=50 ensures the worker exits before the next cron fires (prevents overlap)
+* * * * * /usr/local/bin/php /home/youraccount/corevisys/artisan queue:work --stop-when-empty --tries=3 --max-time=50 >> /dev/null 2>&1
 ```
 
 > [!NOTE]
@@ -279,7 +280,50 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-release.ps1
 # Verify zip: open and confirm no .env inside
 ```
 
-### Deploy Sequence (server via SSH)
+### First Deploy Sequence (server via SSH)
+
+```bash
+# 1. Maintenance mode
+php artisan down --retry=60
+
+# 2. DB backup BEFORE migrate
+mkdir -p ~/backups
+mysqldump -u DB_USER -p DB_NAME > ~/backups/pre-deploy-$(date +%Y%m%d-%H%M%S).sql
+
+# 3. Upload and extract zip into app directory
+mkdir -p /home/youraccount/corevisys
+cd /home/youraccount/corevisys
+unzip ~/corevisys-release-YYYYMMDD.zip
+
+# 4. Create .env from template and fill all required values
+cp .env.example .env
+nano .env
+
+# 5. Discover packages (requires .env with LICENSE_SIGNING_KEY_ID set)
+php artisan package:discover --ansi
+
+# 6. Clear any stale caches from the zip
+php artisan optimize:clear
+
+# 7. Run migrations
+php artisan migrate --force
+
+# 8. Run installer (creates admin, seeds system settings, links storage)
+php artisan corevisys:install --admin-email=admin@yourcompany.com
+
+# 9. Cache config/routes/views for production
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+
+# 10. Set permissions
+chmod -R 775 storage bootstrap/cache
+
+# 11. Bring up
+php artisan up
+```
+
+### Subsequent Deploy Sequence (update to existing install)
 
 ```bash
 # 1. Maintenance mode
@@ -288,28 +332,32 @@ php artisan down --retry=60
 # 2. DB backup BEFORE migrate
 mysqldump -u DB_USER -p DB_NAME > ~/backups/pre-deploy-$(date +%Y%m%d-%H%M%S).sql
 
-# 3. Upload and extract zip
+# 3. Delete old code dirs (keep .env and storage intact)
 cd /home/youraccount/corevisys
-unzip corevisys-release-YYYYMMDD.zip -d .
+rm -rf app bootstrap/app.php config database public resources routes vendor
+# NOTE: storage/ and .env are NOT deleted
 
-# 4. Create/update .env (first deploy: copy from .env.example, fill values)
-nano .env
+# 4. Extract new release
+unzip ~/corevisys-release-YYYYMMDD.zip
 
-# 5. Migrate
+# 5. Discover packages (bootstrap/cache was empty in zip — requires .env)
+php artisan package:discover --ansi
+
+# 6. Clear stale caches
+php artisan optimize:clear
+
+# 7. Migrate
 php artisan migrate --force
 
-# 6. Cache
+# 8. Re-cache
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 
-# 7. Storage symlink (first deploy only)
-php artisan storage:link
-
-# 8. Permissions
+# 9. Permissions
 chmod -R 775 storage bootstrap/cache
 
-# 9. Bring up
+# 10. Bring up
 php artisan up
 ```
 
@@ -379,7 +427,7 @@ Creates admin with `email_verified_at = now()`, secure random password shown onc
 
 ```bash
 # 7.1 HTTPS redirect
-curl -sI http://yourdomain.com/ | head -3
+curl -sI http://yourdomain.com/ | grep -i "HTTP\|Location"
 # Expected: 301, Location: https://
 
 # 7.2 No debug pages
@@ -388,7 +436,7 @@ curl -s https://yourdomain.com/deliberate-404 | grep -i "stack trace\|exception\
 
 # 7.3 Sensitive files blocked
 for path in .env composer.json .git/ vendor/ artisan; do
-  echo -n "$path: "; curl -sI "https://yourdomain.com/$path" | head -1
+  echo -n "$path: "; curl -sI "https://yourdomain.com/$path" | grep HTTP
 done
 # All expected: 403 or 404
 
@@ -396,22 +444,25 @@ done
 curl -s https://yourdomain.com/api/v1/license/public-key
 # Expected: {"key_id":"...","public_key":"-----BEGIN PUBLIC KEY-----..."}
 
-# 7.5 Invalid license (404, not 500)
-curl -s -X POST https://yourdomain.com/api/v1/license/check \
-  -H "Content-Type: application/json" -H "X-Client-Version: 1.0.0" \
-  -d '{"license_key":"BAD-KEY","domain":"smoke.example.com"}'
-# Expected: {"message":"..."} with 404/422, not 500
+# 7.5 Invalid license key -- must return 403 with error_code=invalid_license_key
+# Header name is X-API-Version (from CheckClientVersion middleware)
+curl -s -X POST https://yourdomain.com/api/v1/license/activate \
+  -H "Content-Type: application/json" \
+  -H "X-API-Version: 1.0.0" \
+  -d '{"license_key":"INVALID-0000-0000-0000","domain":"smoke.example.com","product_code":"test"}'
+# Expected: HTTP 403, body: {"status":false,"error_code":"invalid_license_key",...}
+# Must NOT be 500, must NOT reveal internal detail
 
 # 7.6 Health check
 curl -sI https://yourdomain.com/up
-# Expected: 200
+# Expected: HTTP 200
 
 # 7.7 Login throttle (6th failed attempt)
-# (browser test) — Expected: "Too many login attempts. Please try again in X seconds."
+# (browser test) -- Expected: "Too many login attempts. Please try again in X seconds."
 
 # 7.8 Queue health
-php artisan queue:work --stop-when-empty --tries=1
-# Expected: exits cleanly with no exceptions
+php artisan queue:work --stop-when-empty --tries=1 --max-time=50
+# Expected: exits cleanly, no exceptions
 ```
 
 ---

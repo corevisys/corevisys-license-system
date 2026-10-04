@@ -8,20 +8,20 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host " CoreVisys License Server - Production Release Builder     " -ForegroundColor Cyan
+Write-Host " CoreVisys License Server - Production Release Builder    " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "Project Root : $ProjectRoot"
 Write-Host "Output Dir   : $OutputDir"
 
 # 1. Prerequisite check
-Write-Host "`n[1/8] Verifying build tools..." -ForegroundColor Yellow
+Write-Host "`n[1/7] Verifying build tools..." -ForegroundColor Yellow
 foreach ($tool in @('git','composer','npm')) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool not found in PATH." }
 }
-Write-Host "  git, composer, npm — OK" -ForegroundColor Green
+Write-Host "  git, composer, npm -- OK" -ForegroundColor Green
 
 # 2. Build frontend assets in the SOURCE repo (not staging)
-Write-Host "`n[2/8] Building production frontend assets (npm run build)..." -ForegroundColor Yellow
+Write-Host "`n[2/7] Building production frontend assets (npm run build)..." -ForegroundColor Yellow
 Push-Location $ProjectRoot
 try {
     & npm run build
@@ -35,7 +35,7 @@ $ZipName     = "corevisys-release-$Timestamp.zip"
 if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
 $FinalZip    = Join-Path $OutputDir $ZipName
 
-Write-Host "`n[3/8] Exporting tracked files via git archive..." -ForegroundColor Yellow
+Write-Host "`n[3/7] Exporting tracked files via git archive..." -ForegroundColor Yellow
 New-Item -ItemType Directory -Path $StagingRoot -Force | Out-Null
 Push-Location $ProjectRoot
 try {
@@ -47,16 +47,16 @@ try {
 } finally { Pop-Location }
 
 # 4. Copy built assets into staging
-Write-Host "`n[4/8] Copying public/build into staging..." -ForegroundColor Yellow
+Write-Host "`n[4/7] Copying public/build into staging..." -ForegroundColor Yellow
 $SrcBuild = Join-Path $ProjectRoot "public\build"
 $DstBuild = Join-Path $StagingRoot "public\build"
-if (-not (Test-Path $SrcBuild)) { throw "public/build not found — did npm run build succeed?" }
+if (-not (Test-Path $SrcBuild)) { throw "public/build not found - did npm run build succeed?" }
 if (Test-Path $DstBuild) { Remove-Item -Recurse -Force $DstBuild }
 Copy-Item -Recurse -Path $SrcBuild -Destination $DstBuild
 Write-Host "  public/build copied." -ForegroundColor Green
 
 # 5. Strip dev-only files
-Write-Host "`n[5/8] Stripping development artifacts..." -ForegroundColor Yellow
+Write-Host "`n[5/7] Stripping development artifacts..." -ForegroundColor Yellow
 @('tests','AUDIT','.github','.gitattributes','.editorconfig',
   'phpunit.xml','phpunit.mysql.xml','phpstan.neon','phpstan-baseline.neon',
   'vite.config.js','package.json','package-lock.json','jsconfig.json','scripts') |
@@ -77,19 +77,19 @@ ForEach-Object {
 }
 
 # 6. Install production Composer deps
-#    Use --no-scripts to skip package:discover (requires .env with real keys).
-#    The deploy doc instructs: after .env is in place, run:
-#       php artisan package:discover --ansi
-#       php artisan optimize:clear
+#    --no-scripts skips package:discover which fails without .env (AppServiceProvider boot).
+#    Deploy instructions: after uploading and setting .env, run:
+#      php artisan package:discover --ansi
+#      php artisan optimize:clear
 Write-Host "`n[6/7] Running composer install --no-dev --optimize-autoloader --no-scripts..." -ForegroundColor Yellow
 Push-Location $StagingRoot
 try {
     & composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
     if ($LASTEXITCODE -ne 0) { throw "composer install failed (exit $LASTEXITCODE)" }
 } finally { Pop-Location }
-Write-Host "  Done. No bootstrap/cache files copied — run 'php artisan package:discover' on server after .env is ready." -ForegroundColor Green
+Write-Host "  Done. bootstrap/cache NOT pre-populated -- run package:discover on server after .env is ready." -ForegroundColor Green
 
-# Ensure bootstrap/cache only has the .gitignore placeholder (never config.php, packages.php, etc.)
+# Remove any stale bootstrap/cache files (packages.php, services.php, config.php, routes.php)
 $cacheDir = Join-Path $StagingRoot "bootstrap\cache"
 foreach ($f in @('packages.php','services.php','config.php','routes.php')) {
     $fp = Join-Path $cacheDir $f
@@ -107,11 +107,11 @@ Get-ChildItem -Path $StagingRoot -Recurse -Force | ForEach-Object {
     }
 }
 if ($Violations.Count -gt 0) {
-    Write-Host "AUDIT FAILURE — forbidden items found:" -ForegroundColor Red
+    Write-Host "AUDIT FAILURE -- forbidden items found:" -ForegroundColor Red
     $Violations | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
     throw "Exclusion check failed."
 }
-Write-Host "  PASSED — no forbidden files." -ForegroundColor Green
+Write-Host "  PASSED -- no forbidden files." -ForegroundColor Green
 
 # Zip
 Write-Host "`n[ZIP] Compressing to $FinalZip..." -ForegroundColor Yellow
@@ -129,10 +129,10 @@ $topLevel = ($arc.Entries | Where-Object { ($_.FullName -split '[/\\]').Count -l
 $arc.Dispose()
 
 Write-Host "`n==========================================================" -ForegroundColor Green
-Write-Host " Release archive created successfully!                     " -ForegroundColor Green
+Write-Host " Release archive created successfully!" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host "Path          : $FinalZip"
-Write-Host "Size          : $sizeMB MB"
-Write-Host "Entries       : $entryCount"
-Write-Host "Top-level     : $($topLevel -join ', ')"
+Write-Host "Path      : $FinalZip"
+Write-Host "Size      : $sizeMB MB"
+Write-Host "Entries   : $entryCount"
+Write-Host "Top-level : $($topLevel -join ', ')"
 Write-Host "==========================================================" -ForegroundColor Green
