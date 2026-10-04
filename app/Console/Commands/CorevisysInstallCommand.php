@@ -151,10 +151,14 @@ class CorevisysInstallCommand extends Command
             $this->warn('   [WARN] Storage link: ' . $e->getMessage());
         }
 
-        // 6. Clear Optimizations
+        // 6. Clear Optimizations (best-effort — may fail under test parallelism on Windows)
         $this->line('6. Refreshing application cache...');
-        Artisan::call('optimize:clear');
-        $this->info('   [OK] Caches cleared.');
+        try {
+            Artisan::call('optimize:clear');
+            $this->info('   [OK] Caches cleared.');
+        } catch (\Throwable $e) {
+            $this->warn('   [WARN] Cache clear: ' . $e->getMessage() . ' — run "php artisan optimize:clear" manually.');
+        }
 
         // 7. Write Installation Lock File
         File::put($this->lockFile, 'Installed via CLI corevisys:install on ' . now()->toIso8601String() . PHP_EOL);
