@@ -29,6 +29,17 @@ jobs:
           extensions: mbstring, openssl, pdo, sqlite, pdo_sqlite, json, fileinfo, curl
           coverage: none
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Build frontend assets
+        run: |
+          npm ci
+          npm run build
+
       - name: Generate ephemeral license signing keys
         run: |
           key_dir="$(mktemp -d)"
