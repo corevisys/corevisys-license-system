@@ -46,6 +46,7 @@ class BoundDomainPayloadTest extends TestCase
             'status'           => 'active',
             'bound_domain'     => 'bound.example.com',
             'bound_ip'         => '127.0.0.1',
+            'features'         => ['reports', 'exports'],
             'expires_at'       => now()->addYear(),
             'activation_limit' => 3,
         ]);
@@ -104,7 +105,8 @@ PEM;
             'lookup_hash'      => hash_hmac('sha256', $keyStr, $pepper),
             'status'           => 'inactive',
             'bound_domain'     => null,
-            'expires_at'       => now()->addYear(),
+            'features' => ['reports', 'exports'],
+            'expires_at' => now()->addYear(),
             'activation_limit' => 3,
         ]);
     }
@@ -123,6 +125,7 @@ PEM;
             ->assertJsonStructure(['data' => ['bound_domain']]);
 
         $this->assertSame('bound.example.com', $response->json('data.bound_domain'));
+        $this->assertEntitlementListIsSigned($response->json());
     }
 
     #[Test]
@@ -138,6 +141,7 @@ PEM;
             ->assertJsonStructure(['data' => ['bound_domain']]);
 
         $this->assertSame('bound.example.com', $response->json('data.bound_domain'));
+        $this->assertEntitlementListIsSigned($response->json());
     }
 
     #[Test]
@@ -159,6 +163,7 @@ PEM;
 
         // Normalized: no www., lowercase, host-only
         $this->assertSame('new-activation.test', $response->json('data.bound_domain'));
+        $this->assertEntitlementListIsSigned($response->json());
     }
 
     #[Test]
@@ -177,5 +182,22 @@ PEM;
         $response->assertStatus(200);
         // bound_domain in payload is the normalized form (www. stripped)
         $this->assertSame('clean-domain.test', $response->json('data.bound_domain'));
+    }
+
+    private function assertEntitlementListIsSigned(array $response): void
+    {
+        $this->assertSame(['reports', 'exports'], $response['data']['features']);
+
+        $privateKey = openssl_pkey_get_private(config('services.license.signing_private_key'));
+        $publicKey = openssl_pkey_get_details($privateKey)['key'];
+        $this->assertSame(
+            1,
+            openssl_verify(
+                \App\Support\OfflineLicenseVerification::canonicalizePayload($response['data']),
+                base64_decode($response['signature'], true),
+                $publicKey,
+                OPENSSL_ALGO_SHA256
+            )
+        );
     }
 }

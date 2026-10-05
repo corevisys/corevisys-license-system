@@ -841,6 +841,7 @@ Route::middleware('auth')->group(function () {
                     })(),
                     'type' => ucfirst($license->type),
                     'status' => $license->status,
+                    'features' => $license->features ?? [],
                     'enforcement_mode' => $license->enforcement_mode ?? 'active',
                     'bound_domain' => $license->bound_domain,
                     'bound_ip' => $license->bound_ip,
@@ -880,6 +881,27 @@ Route::middleware('auth')->group(function () {
 
             return back()->with('success', 'License status updated.');
         })->name('admin.licenses.status');
+
+        Route::post('/licenses/{id}/features', function ($id, \Illuminate\Http\Request $request) {
+            $data = $request->validate([
+                'features' => 'present|array|max:100',
+                'features.*' => ['required', 'string', 'max:100', 'distinct', 'regex:/^[A-Za-z0-9._:-]+$/'],
+            ]);
+
+            $license = \App\Models\License::findOrFail($id);
+            $oldFeatures = $license->features ?? [];
+            $newFeatures = array_values($data['features']);
+            $license->update(['features' => $newFeatures]);
+
+            \App\Services\AuditService::log(
+                'license_features_updated',
+                $license,
+                ['features' => $oldFeatures],
+                ['features' => $newFeatures]
+            );
+
+            return back()->with('success', 'License features updated.');
+        })->name('admin.licenses.features');
 
         Route::get('/licenses/{id}/history', function ($id) {
             $license = \App\Models\License::findOrFail($id);

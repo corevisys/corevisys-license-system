@@ -8,12 +8,31 @@ import TableHead from '@/Components/UI/TableHead.vue';
 import TableHeaderCell from '@/Components/UI/TableHeaderCell.vue';
 import TableRow from '@/Components/UI/TableRow.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { Activity, Clock } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 
 const props = defineProps({
     license: Object,
 });
+
+const page = usePage();
+const featureList = ref((props.license.features || []).join(', '));
+const featureError = computed(() => {
+    const errors = page.props.errors || {};
+    const indexedError = Object.entries(errors).find(([key]) => key.startsWith('features.'));
+
+    return errors.features || indexedError?.[1] || null;
+});
+
+const saveFeatures = () => {
+    const features = featureList.value
+        .split(/[,\r\n]+/)
+        .map((feature) => feature.trim())
+        .filter(Boolean);
+
+    router.post(route('admin.licenses.features', props.license.id), { features });
+};
 
 const updateStatus = (status) => {
     const msg = status === 'revoked'
@@ -153,6 +172,21 @@ const getStatusColor = (status) => {
                             <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                         </button>
                     </div>
+                </Card>
+
+                <Card class="p-8">
+                    <h3 class="mb-2 text-sm font-black uppercase tracking-[0.2em] text-text-primary">Feature entitlements</h3>
+                    <p class="mb-4 text-xs text-text-muted">Enter exact feature names separated by commas or new lines. An empty list grants no features.</p>
+                    <textarea
+                        v-model="featureList"
+                        rows="3"
+                        aria-label="License feature entitlements"
+                        class="w-full rounded-xl border border-panel-line bg-panel-2 p-3 font-mono text-sm text-text-primary focus:border-amber focus:outline-none"
+                    />
+                    <p v-if="featureError" class="mt-2 text-xs text-danger">
+                        {{ featureError }}
+                    </p>
+                    <Button type="button" class="mt-4" @click="saveFeatures">Save features</Button>
                 </Card>
             </div>
 

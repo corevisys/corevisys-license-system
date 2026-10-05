@@ -38,6 +38,11 @@ class License extends Model
         'last_check_at',
         'enforcement_mode',
         'team_id',
+        'features',
+    ];
+
+    protected $attributes = [
+        'features' => '[]',
     ];
 
     protected $hidden = [
@@ -53,6 +58,7 @@ class License extends Model
         'next_billing_at' => 'datetime',
         'auto_renew' => 'boolean',
         'fingerprint_missing_grace' => 'boolean',
+        'features' => 'array',
     ];
 
     public function user()

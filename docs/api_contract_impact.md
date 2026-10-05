@@ -137,3 +137,12 @@ While endpoint URLs, parameters, and successful response shapes were strictly pr
 | **Category B** | `lookup_hash` NULL<br>`key_encrypted` NOT NULL | **0 rows** (local DB wiped by earlier test run) | Bulk recomputation via `license:migrate-legacy-keys` OR lazy recovery on next client request |
 | **Category C** | `lookup_hash` NULL<br>`key_encrypted` NULL | **0 rows** (local DB wiped by earlier test run) | Lazy recovery ONLY: re-indexed when client presents raw key |
 
+# Per-license feature entitlements
+
+The existing signed response contract already includes `features` as an array.
+The server now persists an explicit per-license list and issues that exact list
+in the signed payload returned by activation, check, and pulse. Existing
+licenses are migrated with an empty list; empty lists grant no feature.
+Administrators manage the list from the license detail page. Feature names are
+exact, case-sensitive identifiers, and the client continues to fail closed
+when a requested name is absent.

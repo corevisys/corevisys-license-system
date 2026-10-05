@@ -500,7 +500,7 @@ class LicenseController extends Controller
             'license_type'       => $license->type,
             'expires_at'         => $license->expires_at?->toIso8601String(),
             'bound_domain'       => $license->bound_domain,
-            'features'           => [],
+            'features'           => array_values((array) $license->features),
             'issued_at'          => now()->toIso8601String(),
             'offline_valid_until' => ($offlineGrant && $license->status === 'active')
                 ? now()->addDays((int) config('license.offline_validity_days', 7))->toIso8601String()
