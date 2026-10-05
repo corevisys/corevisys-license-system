@@ -9,6 +9,9 @@ on:
 jobs:
   server-tests:
     name: PHP ${{ matrix.php }}
+    env:
+      APP_ENV: testing
+      LICENSE_SIGNING_KEY_ID: ci-test-key
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -30,9 +33,6 @@ jobs:
         run: composer validate --strict
 
       - name: Install dependencies
-        env:
-          APP_ENV: testing
-          LICENSE_SIGNING_KEY_ID: ci-test-key
         run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Composer Audit
