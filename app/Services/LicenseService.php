@@ -963,7 +963,7 @@ class LicenseService
     public function qualifyOrChargeRenewalPayment(License $license, ?ProductPrice $price = null): bool
     {
         // bKash renewals require a customer-initiated checkout link; they are never charged here.
-        if ($license->gateway_subscription_id && str_starts_with($license->gateway_subscription_id, 'bkash_')) {
+        if (app(BkashRenewalCheckoutService::class)->isBkashBackedLicense($license)) {
             return false;
         }
 

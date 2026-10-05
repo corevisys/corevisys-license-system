@@ -73,6 +73,23 @@ class BkashRenewalCheckoutTest extends TestCase
         Http::assertNotSent(fn ($request) => str_contains($request->url(), '/checkout/payment/status'));
     }
 
+    public function test_unapplied_original_bkash_payment_cannot_authorize_the_next_renewal(): void
+    {
+        Mail::fake();
+        $license = $this->dueBkashLicense();
+        $originalExpiry = $license->expires_at->timestamp;
+        Payment::where('order_id', $license->order_id)->update(['applied_at' => null]);
+        $this->fakeProvider();
+
+        app(LicenseService::class)->processRenewals();
+
+        $this->assertSame($originalExpiry, $license->fresh()->expires_at->timestamp);
+        $this->assertSame('awaiting_payment', Order::where('license_id', $license->id)
+            ->where('type', 'renewal')->value('status'));
+        $this->assertNull(Payment::where('order_id', $license->order_id)->value('applied_at'));
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/checkout/execute'));
+    }
+
     public function test_repeated_due_job_reuses_order_payment_checkout_and_email(): void
     {
         Mail::fake();
