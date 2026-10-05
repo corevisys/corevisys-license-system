@@ -12,7 +12,7 @@ import {
     ShieldCheck,
     Timer,
 } from 'lucide-vue-next';
-import PublicLayout from '@/Components/public/PublicLayout.vue';
+import PublicLayout from '@/Components/Public/PublicLayout.vue';
 import SectionHeading from '@/Components/public/SectionHeading.vue';
 import Timeline from '@/Components/public/Timeline.vue';
 import BenefitCard from '@/Components/public/BenefitCard.vue';

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
-import PublicLayout from '@/Components/public/PublicLayout.vue';
+import PublicLayout from '@/Components/Public/PublicLayout.vue';
 import SectionHeading from '@/Components/public/SectionHeading.vue';
 import StepList from '@/Components/public/StepList.vue';
 import ComparisonTable from '@/Components/public/ComparisonTable.vue';

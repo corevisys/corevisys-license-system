@@ -1,5 +1,5 @@
 <script setup>
-import PublicLayout from '@/Components/public/PublicLayout.vue';
+import PublicLayout from '@/Components/Public/PublicLayout.vue';
 import LegalLayout from '@/Components/public/LegalLayout.vue';
 import { legal } from '@/content/public.js';
 

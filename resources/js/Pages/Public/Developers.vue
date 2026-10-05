@@ -1,5 +1,5 @@
 <script setup>
-import PublicLayout from '@/Components/public/PublicLayout.vue';
+import PublicLayout from '@/Components/Public/PublicLayout.vue';
 import SectionHeading from '@/Components/public/SectionHeading.vue';
 import StepList from '@/Components/public/StepList.vue';
 import BenefitCard from '@/Components/public/BenefitCard.vue';
