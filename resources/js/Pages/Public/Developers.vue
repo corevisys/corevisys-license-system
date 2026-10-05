@@ -1,12 +1,12 @@
 <script setup>
 import PublicLayout from '@/Components/Public/PublicLayout.vue';
-import SectionHeading from '@/Components/public/SectionHeading.vue';
-import StepList from '@/Components/public/StepList.vue';
-import BenefitCard from '@/Components/public/BenefitCard.vue';
-import CodeBlock from '@/Components/public/CodeBlock.vue';
-import CTABanner from '@/Components/public/CTABanner.vue';
-import PageToc from '@/Components/public/PageToc.vue';
-import Reveal from '@/Components/public/Reveal.vue';
+import SectionHeading from '@/Components/Public/SectionHeading.vue';
+import StepList from '@/Components/Public/StepList.vue';
+import BenefitCard from '@/Components/Public/BenefitCard.vue';
+import CodeBlock from '@/Components/Public/CodeBlock.vue';
+import CTABanner from '@/Components/Public/CTABanner.vue';
+import PageToc from '@/Components/Public/PageToc.vue';
+import Reveal from '@/Components/Public/Reveal.vue';
 import Badge from '@/Components/UI/Badge.vue';
 import {
     activationExample,

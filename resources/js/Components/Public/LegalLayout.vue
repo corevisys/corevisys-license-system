@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import PageToc from '@/Components/public/PageToc.vue';
+import PageToc from '@/Components/Public/PageToc.vue';
 
 const props = defineProps({
     title: { type: String, required: true },

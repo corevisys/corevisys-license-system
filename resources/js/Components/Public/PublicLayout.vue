@@ -1,8 +1,8 @@
 <script setup>
 import { onBeforeMount } from 'vue';
 import { Head } from '@inertiajs/vue3';
-import Navbar from '@/Components/public/Navbar.vue';
-import Footer from '@/Components/public/Footer.vue';
+import Navbar from '@/Components/Public/Navbar.vue';
+import Footer from '@/Components/Public/Footer.vue';
 import { useTheme } from '@/Composables/useTheme.js';
 
 defineProps({

@@ -1,7 +1,7 @@
 <script setup>
 import { Link } from '@inertiajs/vue3';
 import PublicLayout from '@/Components/Public/PublicLayout.vue';
-import SectionHeading from '@/Components/public/SectionHeading.vue';
+import SectionHeading from '@/Components/Public/SectionHeading.vue';
 import { site } from '@/content/public.js';
 
 defineProps({

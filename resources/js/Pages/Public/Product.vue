@@ -2,13 +2,13 @@
 import { computed, ref } from 'vue';
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import PublicLayout from '@/Components/Public/PublicLayout.vue';
-import SectionHeading from '@/Components/public/SectionHeading.vue';
-import StepList from '@/Components/public/StepList.vue';
-import Timeline from '@/Components/public/Timeline.vue';
-import BenefitCard from '@/Components/public/BenefitCard.vue';
-import FAQ from '@/Components/public/FAQ.vue';
-import CTABanner from '@/Components/public/CTABanner.vue';
-import Reveal from '@/Components/public/Reveal.vue';
+import SectionHeading from '@/Components/Public/SectionHeading.vue';
+import StepList from '@/Components/Public/StepList.vue';
+import Timeline from '@/Components/Public/Timeline.vue';
+import BenefitCard from '@/Components/Public/BenefitCard.vue';
+import FAQ from '@/Components/Public/FAQ.vue';
+import CTABanner from '@/Components/Public/CTABanner.vue';
+import Reveal from '@/Components/Public/Reveal.vue';
 import Alert from '@/Components/UI/Alert.vue';
 import Badge from '@/Components/UI/Badge.vue';
 import {
