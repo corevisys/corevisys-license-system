@@ -168,6 +168,29 @@ class DeactivationTest extends TestCase
     }
 
     #[Test]
+    public function deactivation_is_rejected_when_bound_fingerprint_is_missing(): void
+    {
+        $license = $this->makeActiveLicense('example.com', 'fp-CORRECT');
+        $rawKey  = app(LicenseService::class)->rotateLicenseKey(
+            $license, 'TEST-ABCD-EFGH-IJKL'
+        )->raw_key;
+
+        $response = $this->postJson('/api/v1/license/deactivate', [
+            'license_key'  => $rawKey,
+            'domain'       => 'example.com',
+            'ip'           => '1.2.3.4',
+            'product_code' => 'corevisys-crm',
+        ]);
+
+        $response->assertStatus(403)
+            ->assertJson(['error_code' => 'fingerprint_mismatch']);
+
+        $license->refresh();
+        $this->assertSame('example.com', $license->bound_domain);
+        $this->assertSame('fp-CORRECT', $license->bound_fingerprint);
+    }
+
+    #[Test]
     public function deactivation_returns_403_for_invalid_key(): void
     {
         $this->postJson('/api/v1/license/deactivate', [
@@ -244,11 +267,12 @@ class DeactivationTest extends TestCase
             'status'         => 'success',
         ]);
 
-        // Deactivate from the secondary domain (no fingerprint bound to secondary)
+        // Deactivate from the secondary domain using the license-bound fingerprint
         $response = $this->postJson('/api/v1/license/deactivate', [
             'license_key'  => $rawKey,
             'domain'       => 'secondary.com',
             'ip'           => '5.5.5.5',
+            'fingerprint'  => 'fp-primary',
             'product_code' => 'corevisys-crm',
         ]);
 

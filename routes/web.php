@@ -290,6 +290,16 @@ Route::get('/orders/bkash/callback', function (\Illuminate\Http\Request $request
         $payment->refresh();
         $order = $payment->order;
 
+        if ($order && $order->type === 'renewal' && $order->renewal_cycle_at
+            && !app(\App\Services\BkashRenewalCheckoutService::class)->isMatchingRenewalPayment($payment)) {
+            \Illuminate\Support\Facades\Log::warning('bKash Callback: Renewal payment/order/license mismatch.', [
+                'payment_id' => $paymentID,
+                'payment_record_id' => $payment->id,
+                'order_id' => $order->id,
+            ]);
+            return redirect()->route('orders')->with('error', 'Payment verification failed.');
+        }
+
         if ($order && ($order->status === \App\Support\OrderStatus::COMPLETED || $payment->status === 'verified')) {
             \Illuminate\Support\Facades\Log::info('bKash Callback: Payment/order already completed. Idempotent return.', ['payment_id' => $paymentID]);
             $existingLicense = $order->licenses()->first()
@@ -306,6 +316,14 @@ Route::get('/orders/bkash/callback', function (\Illuminate\Http\Request $request
         $result = $bkashService->executeOrQueryPayment($paymentID);
 
         if (($result['transactionStatus'] ?? '') === 'Completed') {
+            if ($order->type === 'renewal' && $order->renewal_cycle_at && !$bkashService->isPaymentAmountValid($order, $result)) {
+                \Illuminate\Support\Facades\Log::warning('bKash Callback: Renewal amount mismatch.', [
+                    'payment_id' => $paymentID,
+                    'order_id' => $order->id,
+                ]);
+                return redirect()->route('orders')->with('error', 'Payment verification failed.');
+            }
+
             try {
                 $fulfillmentService = app(\App\Services\OrderFulfillmentService::class);
                 $trxID = $result['trxID'] ?? $result['paymentID'];

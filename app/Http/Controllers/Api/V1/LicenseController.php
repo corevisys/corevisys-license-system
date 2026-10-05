@@ -302,7 +302,8 @@ class LicenseController extends Controller
      * POST /api/v1/license/deactivate
      *
      * Required: license_key, domain, ip
-     * Optional: fingerprint, product_code, reason
+     * Fingerprint is required when the license is fingerprint-bound.
+     * Optional: fingerprint for unbound licenses, product_code, reason
      */
     public function deactivate(Request $request)
     {

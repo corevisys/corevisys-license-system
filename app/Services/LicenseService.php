@@ -91,11 +91,17 @@ class LicenseService
         $newExpiry = $startDate->copy()->addDays($billingPeriod);
 
         // 3. Update License
-        $license->update([
+        $licenseUpdates = [
             'expires_at' => $newExpiry,
             'status' => 'active', // Reactivate if was expired
             'last_check_at' => now(), // Optional: mark activity
-        ]);
+        ];
+        if ($order->renewal_cycle_at) {
+            $licenseUpdates['next_billing_at'] = $newExpiry;
+            $licenseUpdates['grace_expires_at'] = null;
+            $licenseUpdates['auto_renew'] = true;
+        }
+        $license->update($licenseUpdates);
         
         // Return existing license
         return $license;
@@ -688,15 +694,16 @@ class LicenseService
         }
 
         // 2. Strict fingerprint check (no grace window on deactivation)
-        if ($license->bound_fingerprint !== null && $fingerprint !== null) {
-            if (! hash_equals($license->bound_fingerprint, $fingerprint)) {
-                $this->logActivation($license, $domain, $ip, 'failed', 'Deactivation: fingerprint mismatch');
-                return [
-                    'status'     => false,
-                    'message'    => 'Fingerprint mismatch. Deactivation denied.',
-                    'error_code' => 'fingerprint_mismatch',
-                ];
-            }
+        if (
+            $license->bound_fingerprint !== null
+            && ($fingerprint === null || ! hash_equals($license->bound_fingerprint, $fingerprint))
+        ) {
+            $this->logActivation($license, $domain, $ip, 'failed', 'Deactivation: fingerprint mismatch');
+            return [
+                'status'     => false,
+                'message'    => 'Fingerprint mismatch. Deactivation denied.',
+                'error_code' => 'fingerprint_mismatch',
+            ];
         }
 
         // 3. Mark all successful activation rows for this domain as deactivated
@@ -815,6 +822,12 @@ class LicenseService
 
         $dueQuery->with('product.prices')->chunkById(500, function ($licenses) use (&$results) {
             foreach ($licenses as $license) {
+                if (app(BkashRenewalCheckoutService::class)->isBkashBackedLicense($license)) {
+                    (new ProcessLicenseRenewal($license))->handle();
+                    $results['failed']++;
+                    continue;
+                }
+
                 if ($this->renewLicense($license)) {
                     $results['success']++;
                 } else {
@@ -949,12 +962,9 @@ class LicenseService
      */
     public function qualifyOrChargeRenewalPayment(License $license, ?ProductPrice $price = null): bool
     {
-        // 1. If bKash recurring subscription, delegate to bKash recurring charge
+        // bKash renewals require a customer-initiated checkout link; they are never charged here.
         if ($license->gateway_subscription_id && str_starts_with($license->gateway_subscription_id, 'bkash_')) {
-            $renewalJob = new ProcessLicenseRenewal($license);
-            if ($renewalJob->chargeRecurringSubscription()) {
-                return true;
-            }
+            return false;
         }
 
         // 2. Stripe subscription ID: handled by webhooks only

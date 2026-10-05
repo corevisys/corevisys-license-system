@@ -156,6 +156,11 @@ class OrderController extends Controller
             $payment->refresh();
             $order = $payment->order;
 
+            if ($order && $order->type === 'renewal' && $order->renewal_cycle_at
+                && !app(\App\Services\BkashRenewalCheckoutService::class)->isMatchingRenewalPayment($payment)) {
+                return response()->json(['status' => false, 'message' => 'Renewal payment verification failed.'], 409);
+            }
+
             if ($order && ($order->status === OrderStatus::COMPLETED || $payment->status === 'verified')) {
                 $license = $order->licenses()->first()
                     ?? ($order->license_id ? \App\Models\License::find($order->license_id) : null)
@@ -173,6 +178,10 @@ class OrderController extends Controller
             $result = $bkashService->executeOrQueryPayment($paymentID);
 
             if (($result['transactionStatus'] ?? '') === 'Completed') {
+                if ($order->type === 'renewal' && $order->renewal_cycle_at && !$bkashService->isPaymentAmountValid($order, $result)) {
+                    return response()->json(['status' => false, 'message' => 'Renewal payment verification failed.'], 402);
+                }
+
                 $trxID = $result['trxID'] ?? $result['paymentID'];
                 $fulfillment = app(OrderFulfillmentService::class)->fulfillOrder($order, [
                     'transaction_id' => $trxID,

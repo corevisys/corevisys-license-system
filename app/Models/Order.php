@@ -24,6 +24,13 @@ class Order extends Model
         'status',
         'payment_method',
         'type',
+        'renewal_cycle_at',
+        'renewal_link_email_sent_at',
+    ];
+
+    protected $casts = [
+        'renewal_cycle_at' => 'datetime',
+        'renewal_link_email_sent_at' => 'datetime',
     ];
 
     public function user()

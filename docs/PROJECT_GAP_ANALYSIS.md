@@ -75,19 +75,13 @@ The following items were fixed and verified during the remediation cycle and are
 - Centralized alerting is now wired through the queue failure hook and log channel configuration.
   - References: [app/Providers/AppServiceProvider.php](../app/Providers/AppServiceProvider.php#L31-L50), [config/logging.php](../config/logging.php#L61-L117)
 
-### H1 — Real recurring billing charge initiation
+### H1 — Customer-authorized bKash renewal
 
-Real subscription renewal is now implemented as a genuine recurring billing trigger rather than a status-only placeholder. The renewal worker resolves the recurring price, attempts a real bKash charge when the gateway subscription is bKash-backed, persists payment records with idempotency keys, and only updates expiry on verified success.
+Every due bKash-backed renewal requires customer action. The worker creates or reuses a renewal order for the license and billing cycle, stores one pending payment, and emails its bKash checkout link. It does not execute or query payment from the renewal job. The customer must complete each payment in bKash, including entering their PIN; this is not unattended auto-debit. The existing server-side callback verifies the provider result and fulfills only the matching pending renewal order/payment/license. Failed checkout creation does not leave a pending success-shaped order; the existing grace/expiry policy continues to apply.
 
-- Code: [app/Jobs/ProcessLicenseRenewal.php](../app/Jobs/ProcessLicenseRenewal.php#L17-L163)
-- Evidence: [tests/Feature/SubscriptionRenewalTest.php](../tests/Feature/SubscriptionRenewalTest.php)
-
-This includes:
-
-- conditional skip for native Stripe subscription lifecycle: [app/Jobs/ProcessLicenseRenewal.php](../app/Jobs/ProcessLicenseRenewal.php#L17-L26)
-- billing period calculation from product price: [app/Jobs/ProcessLicenseRenewal.php](../app/Jobs/ProcessLicenseRenewal.php#L27-L42)
-- real bKash execution and idempotency key handling: [app/Jobs/ProcessLicenseRenewal.php](../app/Jobs/ProcessLicenseRenewal.php#L71-L149)
-- grace-period and expired-state fallback when payment fails: [app/Jobs/ProcessLicenseRenewal.php](../app/Jobs/ProcessLicenseRenewal.php#L43-L69)
+- Code: [app/Services/BkashRenewalCheckoutService.php](../app/Services/BkashRenewalCheckoutService.php), [app/Jobs/ProcessLicenseRenewal.php](../app/Jobs/ProcessLicenseRenewal.php)
+- Evidence: [tests/Feature/BkashRenewalCheckoutTest.php](../tests/Feature/BkashRenewalCheckoutTest.php)
+- Provider sandbox/live verification has not been performed.
 
 ### H2 — Stripe invoice.payment_failed and customer.subscription.deleted handling + notification
 

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\ProcessLicenseRenewal;
+use App\Mail\BkashRenewalPaymentLink;
 use App\Models\AuditLog;
 use App\Models\License;
 use App\Models\Order;
@@ -892,8 +893,9 @@ class ProcessRenewalsLiveTest extends TestCase
         $this->assertEquals($license->expires_at->toIso8601String(), $license->next_billing_at->toIso8601String());
     }
 
-    public function test_renewal_charges_bkash_recurring_subscription_when_configured(): void
+    public function test_process_renewals_creates_customer_authorized_bkash_checkout(): void
     {
+        Mail::fake();
         config()->set('app.url', 'https://checkout.example.com');
         config()->set('services.bkash.app_key', 'test-app-key');
         config()->set('services.bkash.app_secret', 'test-app-secret');
@@ -907,11 +909,6 @@ class ProcessRenewalsLiveTest extends TestCase
                 'statusCode' => '0000',
                 'bkashURL'   => 'https://bkash.example/checkout',
                 'paymentID'  => 'bkash-renew-live-1',
-            ], 200),
-            'https://tokenized.sandbox.bka.sh/v1.2.0-beta/checkout/execute' => Http::response([
-                'transactionStatus' => 'Completed',
-                'trxID'             => 'trx_live_123',
-                'paymentID'         => 'bkash-renew-live-1',
             ], 200),
         ]);
 
@@ -950,20 +947,24 @@ class ProcessRenewalsLiveTest extends TestCase
         $service = new LicenseService();
         $results = $service->processRenewals();
 
-        $this->assertSame(1, $results['success']);
-        $this->assertSame(0, $results['failed']);
+        $this->assertSame(0, $results['success']);
+        $this->assertSame(1, $results['failed']);
 
         $license->refresh();
-        $this->assertTrue($license->expires_at->isFuture());
-        $this->assertTrue($license->next_billing_at->isFuture());
+        $this->assertTrue($license->expires_at->isPast());
+        $this->assertTrue($license->next_billing_at->isPast());
 
+        $renewalOrder = Order::where('license_id', $license->id)->where('type', 'renewal')->firstOrFail();
+        $this->assertSame('awaiting_payment', $renewalOrder->status);
         $this->assertDatabaseHas('payments', [
-            'order_id'       => $order->id,
+            'order_id'       => $renewalOrder->id,
             'license_id'     => $license->id,
             'gateway'        => 'bkash',
             'transaction_id' => 'bkash-renew-live-1',
-            'status'         => 'verified',
+            'status'         => 'pending',
         ]);
+        Mail::assertSent(BkashRenewalPaymentLink::class, 1);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/checkout/execute'));
     }
 
     public function test_renewal_rejects_payment_with_mismatched_currency(): void
@@ -1927,4 +1928,3 @@ class ProcessRenewalsLiveTest extends TestCase
         $this->assertNull($payment->fresh()->applied_at);
     }
 }
-

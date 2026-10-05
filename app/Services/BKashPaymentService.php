@@ -96,7 +96,7 @@ class BKashPaymentService
             ]);
 
         if ($response->failed()) {
-            Log::error('bKash Token Grant Failed', ['status' => $response->status(), 'body' => $response->body()]);
+            Log::error('bKash Token Grant Failed', ['status' => $response->status()]);
             throw new \Exception('bKash authentication failed (' . $response->status() . ').');
         }
 
@@ -165,7 +165,7 @@ class BKashPaymentService
             }
 
             if ($response->failed()) {
-                Log::error('bKash Create Payment Failed', ['status' => $response->status(), 'body' => $response->body()]);
+                Log::error('bKash Create Payment Failed', ['status' => $response->status()]);
                 throw new \Exception('bKash payment creation failed (' . $response->status() . ').');
             }
         }
@@ -197,7 +197,7 @@ class BKashPaymentService
             }
 
             if ($response->failed()) {
-                Log::error('bKash Execute Payment Failed', ['status' => $response->status(), 'body' => $response->body()]);
+                Log::error('bKash Execute Payment Failed', ['status' => $response->status()]);
                 throw new \Exception('bKash payment confirmation failed (' . $response->status() . ').');
             }
         }
@@ -223,7 +223,7 @@ class BKashPaymentService
             }
 
             if ($response->failed()) {
-                Log::error('bKash Query Payment Failed', ['status' => $response->status(), 'body' => $response->body()]);
+                Log::error('bKash Query Payment Failed', ['status' => $response->status()]);
                 throw new \Exception('bKash payment status query failed (' . $response->status() . ').');
             }
         }
@@ -245,7 +245,7 @@ class BKashPaymentService
         } catch (\Throwable $e) {
             Log::warning('bKash executePayment failed, checking queryPayment', [
                 'payment_id' => $paymentID,
-                'error' => $e->getMessage(),
+                'exception' => get_class($e),
             ]);
         }
 
@@ -258,12 +258,23 @@ class BKashPaymentService
             } catch (\Throwable $e) {
                 Log::warning('bKash queryPayment failed after execute', [
                     'payment_id' => $paymentID,
-                    'error' => $e->getMessage(),
+                    'exception' => get_class($e),
                 ]);
             }
         }
 
         return is_array($result) ? $result : [];
+    }
+
+    public function isPaymentAmountValid(Order $order, array $providerResult): bool
+    {
+        if (!isset($providerResult['amount']) || !is_numeric($providerResult['amount'])) {
+            return false;
+        }
+
+        $expectedAmount = $this->amountInBdt($order, new ProductPrice());
+
+        return abs(round((float) $providerResult['amount'], 2) - round($expectedAmount, 2)) < 0.005;
     }
 
 

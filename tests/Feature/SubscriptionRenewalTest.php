@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\ProcessLicenseRenewal;
+use App\Mail\BkashRenewalPaymentLink;
 use App\Models\License;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -14,6 +15,7 @@ use App\Services\OrderFulfillmentService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Mockery;
 use Tests\TestCase;
 
@@ -125,8 +127,9 @@ class SubscriptionRenewalTest extends TestCase
         $this->assertSame('pending', $order->fresh()->payment->status);
     }
 
-    public function test_bkash_recurring_charge_successfully_renews_license()
+    public function test_bkash_renewal_creates_customer_checkout_without_extending_license()
     {
+        Mail::fake();
         config()->set('app.url', 'https://checkout.example.com');
         config()->set('services.bkash.app_key', 'test-app-key');
         config()->set('services.bkash.app_secret', 'test-app-secret');
@@ -139,11 +142,6 @@ class SubscriptionRenewalTest extends TestCase
             'https://tokenized.sandbox.bka.sh/v1.2.0-beta/checkout/create' => Http::response([
                 'statusCode' => '0000',
                 'bkashURL' => 'https://bkash.example/checkout',
-                'paymentID' => 'bkash-payment-1',
-            ], 200),
-            'https://tokenized.sandbox.bka.sh/v1.2.0-beta/checkout/execute' => Http::response([
-                'transactionStatus' => 'Completed',
-                'trxID' => 'trx_123',
                 'paymentID' => 'bkash-payment-1',
             ], 200),
         ]);
@@ -184,20 +182,25 @@ class SubscriptionRenewalTest extends TestCase
         $job->handle();
 
         $license->refresh();
+        $renewalOrder = Order::where('license_id', $license->id)->where('type', 'renewal')->firstOrFail();
 
-        $this->assertTrue($license->expires_at->isFuture());
-        $this->assertTrue($license->next_billing_at->isFuture());
+        $this->assertTrue($license->expires_at->isPast());
+        $this->assertTrue($license->next_billing_at->isPast());
+        $this->assertSame('awaiting_payment', $renewalOrder->status);
         $this->assertSame('active', $license->status);
         $this->assertDatabaseHas('payments', [
-            'order_id' => $order->id,
+            'order_id' => $renewalOrder->id,
             'gateway' => 'bkash',
             'transaction_id' => 'bkash-payment-1',
-            'status' => 'verified',
+            'status' => 'pending',
         ]);
+        Mail::assertSent(BkashRenewalPaymentLink::class, 1);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/checkout/execute'));
     }
 
-    public function test_bkash_recurring_charge_failure_starts_grace_and_notifies_customer()
+    public function test_bkash_checkout_creation_failure_marks_attempt_failed_and_does_not_extend()
     {
+        Mail::fake();
         config()->set('app.url', 'https://checkout.example.com');
         config()->set('services.bkash.app_key', 'test-app-key');
         config()->set('services.bkash.app_secret', 'test-app-secret');
@@ -207,15 +210,7 @@ class SubscriptionRenewalTest extends TestCase
                 'status_code' => '0000',
                 'id_token' => 'test-token',
             ], 200),
-            'https://tokenized.sandbox.bka.sh/v1.2.0-beta/checkout/create' => Http::response([
-                'statusCode' => '0000',
-                'bkashURL' => 'https://bkash.example/checkout',
-                'paymentID' => 'bkash-payment-failed',
-            ], 200),
-            'https://tokenized.sandbox.bka.sh/v1.2.0-beta/checkout/execute' => Http::response([
-                'transactionStatus' => 'Failed',
-                'paymentID' => 'bkash-payment-failed',
-            ], 200),
+            'https://tokenized.sandbox.bka.sh/v1.2.0-beta/checkout/create' => Http::response(['statusCode' => 'Failed'], 500),
         ]);
 
         $user = User::factory()->create();
@@ -254,20 +249,25 @@ class SubscriptionRenewalTest extends TestCase
         $job->handle();
 
         $license->refresh();
+        $renewalOrder = Order::where('license_id', $license->id)->where('type', 'renewal')->firstOrFail();
 
         $this->assertNotNull($license->grace_expires_at);
         $this->assertTrue($license->grace_expires_at->isFuture());
+        $this->assertTrue($license->expires_at->isPast());
         $this->assertSame('active', $license->status);
+        $this->assertSame('cancelled', $renewalOrder->status);
         $this->assertDatabaseHas('payments', [
-            'order_id' => $order->id,
+            'order_id' => $renewalOrder->id,
             'gateway' => 'bkash',
-            'transaction_id' => 'bkash-payment-failed',
             'status' => 'failed',
         ]);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/checkout/execute'));
+        Mail::assertNotSent(BkashRenewalPaymentLink::class);
     }
 
-    public function test_bkash_recurring_charge_is_idempotent_for_successful_repeat_attempts()
+    public function test_bkash_renewal_checkout_retries_are_idempotent()
     {
+        Mail::fake();
         config()->set('app.url', 'https://checkout.example.com');
         config()->set('services.bkash.app_key', 'test-app-key');
         config()->set('services.bkash.app_secret', 'test-app-secret');
@@ -280,11 +280,6 @@ class SubscriptionRenewalTest extends TestCase
             'https://tokenized.sandbox.bka.sh/v1.2.0-beta/checkout/create' => Http::response([
                 'statusCode' => '0000',
                 'bkashURL' => 'https://bkash.example/checkout',
-                'paymentID' => 'bkash-payment-duplicate',
-            ], 200),
-            'https://tokenized.sandbox.bka.sh/v1.2.0-beta/checkout/execute' => Http::response([
-                'transactionStatus' => 'Completed',
-                'trxID' => 'trx_duplicated',
                 'paymentID' => 'bkash-payment-duplicate',
             ], 200),
         ]);
@@ -327,7 +322,11 @@ class SubscriptionRenewalTest extends TestCase
         $secondJob = new ProcessLicenseRenewal($license);
         $secondJob->handle();
 
-        $this->assertDatabaseCount('payments', 1);
+        $this->assertSame(1, Order::where('license_id', $license->id)->where('type', 'renewal')->count());
+        $this->assertSame(1, \App\Models\Payment::where('gateway', 'bkash')->count());
+        Http::assertSentCount(2); // one token grant and one create request
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/checkout/execute'));
+        Mail::assertSent(BkashRenewalPaymentLink::class, 1);
     }
 
 }

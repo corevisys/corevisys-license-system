@@ -76,6 +76,8 @@ The system supports:
 - bKash tokenized checkout
 - additional optional providers when enabled in configuration
 
+bKash-backed subscription renewals require customer action for every billing cycle. The renewal worker emails a bKash payment link; the customer must open it and complete the payment in bKash, including entering their PIN. The worker never attempts an unattended charge or immediate payment execution. A renewal takes effect only after the existing server-verified payment callback succeeds.
+
 Keep each gateway disabled by default until corresponding credentials are added. This prevents a production outage caused by hard dependencies on paid providers.
 
 ### Mail and receipt storage
@@ -98,6 +100,7 @@ Before production go-live:
 5. Ensure `failed_jobs` is monitored and that critical alerts are routed to the alert log or a monitoring channel.
 6. Rotate license-signing keys with a proper overlap window before key retirement.
 7. Validate webhook secrets for Stripe and any payment provider you enable.
+8. Configure working outbound email: bKash renewal links are sent to customers for each due billing cycle.
 
 ## API overview
 
