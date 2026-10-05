@@ -29,6 +29,18 @@ jobs:
           extensions: mbstring, openssl, pdo, sqlite, pdo_sqlite, json, fileinfo, curl
           coverage: none
 
+      - name: Generate ephemeral license signing keys
+        run: |
+          key_dir="$(mktemp -d)"
+          trap 'rm -rf "$key_dir"' EXIT
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$key_dir/private.pem"
+          openssl pkey -in "$key_dir/private.pem" -pubout -out "$key_dir/public.pem"
+          private_key="$(base64 -w0 "$key_dir/private.pem")"
+          public_key="$(base64 -w0 "$key_dir/public.pem")"
+          echo "::add-mask::$private_key"
+          printf 'LICENSE_SIGNING_PRIVATE_KEY=%s\n' "$private_key" >> "$GITHUB_ENV"
+          printf 'LICENSE_SIGNING_PUBLIC_KEY=%s\n' "$public_key" >> "$GITHUB_ENV"
+
       - name: Validate composer.json
         run: composer validate --strict
 
