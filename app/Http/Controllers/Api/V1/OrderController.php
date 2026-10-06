@@ -1,0 +1,282 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1;
+
+use App\Http\Controllers\Controller;
+use App\Models\Order;
+use App\Models\Payment;
+use App\Models\Product;
+use App\Services\BKashPaymentService;
+use App\Services\LicenseService;
+use App\Services\OrderFulfillmentService;
+use App\Services\ReceiptStorageService;
+use App\Support\OrderStatus;
+use Illuminate\Database\QueryException;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+
+class OrderController extends Controller
+{
+    protected $licenseService;
+    protected $currencyService;
+
+    public function __construct(LicenseService $licenseService)
+    {
+        $this->licenseService = $licenseService;
+        $this->currencyService = new \App\Services\CurrencyService();
+    }
+
+    public function store(Request $request)
+    {
+        // Simple order creation (Single Product for MVP)
+        $request->validate([
+            'product_id' => ['required', 'exists:products,id'],
+            'product_price_id' => ['nullable', 'integer', Rule::exists('product_prices', 'id')->where(fn ($query) => $query->where('product_id', $request->input('product_id')))],
+            'gateway' => 'required|string', // stripe, manual, etc
+        ]);
+
+        $user = $request->user();
+        $product = Product::findOrFail($request->product_id);
+
+        if (!$product->is_active) {
+            return response()->json(['status' => false, 'message' => 'Product Unavailable'], 422);
+        }
+
+        $price = $request->filled('product_price_id')
+            ? $product->prices()->whereKey($request->integer('product_price_id'))->first()
+            : $product->prices()->where('type', 'full')->first();
+        if (!$price) {
+            return response()->json(['status' => false, 'message' => 'Product Unavailable'], 400);
+        }
+
+        $order = Order::create([
+            'order_number' => 'ORD-' . strtoupper(Str::random(8)),
+            'user_id' => $user->id,
+            'total_amount' => $price->amount,
+            'currency' => $price->currency,
+            'status' => OrderStatus::PENDING,
+            'payment_method' => $request->gateway,
+        ]);
+
+        // Add Item
+        $order->items()->create([
+            'product_id' => $product->id,
+            'price' => $price->amount,
+            'license_type' => 'full',
+        ]);
+
+        // Handle Stripe
+        $stripeUrl = null;
+        if ($request->gateway === 'stripe') {
+            try {
+                // Ensure a payment record exists so the checkout session can be linked
+                // and the webhook/success-callback can fulfill the order.
+                $order->payments()->create([
+                    'user_id' => $user->id,
+                    'gateway' => 'stripe',
+                    'amount' => $price->amount,
+                    'status' => 'pending',
+                ]);
+
+                $stripeService = new \App\Services\StripePaymentService();
+                $session = $stripeService->createCheckoutSession($order, $price);
+                $stripeUrl = $session->url;
+            } catch (\Exception $e) {
+                return response()->json(['status' => false, 'message' => 'Payment Failed: ' . $e->getMessage()], 500);
+            }
+        }
+
+        // Handle bKash (Tokenized Checkout)
+        $bkashUrl = null;
+        if ($request->gateway === 'bkash') {
+            try {
+                $order->payments()->create([
+                    'user_id' => $user->id,
+                    'gateway' => 'bkash',
+                    'amount' => $price->amount,
+                    'status' => 'pending',
+                ]);
+
+                $bkashService = new BKashPaymentService();
+                $bkashResponse = $bkashService->createPayment($order, $price);
+
+                $order->payment()->update([
+                    'transaction_id' => $bkashResponse['paymentID'],
+                    'gateway_response' => $bkashResponse,
+                ]);
+
+                $bkashUrl = $bkashResponse['bkashURL'];
+            } catch (\Exception $e) {
+                return response()->json(['status' => false, 'message' => 'Payment Failed: ' . $e->getMessage()], 500);
+            }
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'order' => $order->load('licenses'),
+            'stripe_url' => $stripeUrl,
+            'bkash_url' => $bkashUrl,
+            'message' => 'Order Created'
+        ]);
+    }
+
+    /**
+     * Confirm a bKash payment from a mobile client. The user completes payment
+     * in the bKash app/WebView and this endpoint executes + fulfills the order.
+     */
+    public function executeBkash(Request $request)
+    {
+        $request->validate([
+            'payment_id' => 'required|string',
+        ]);
+
+        $paymentID = trim($request->payment_id);
+
+        $payment = Payment::where('gateway', 'bkash')
+            ->where(function ($query) use ($paymentID) {
+                $query->where('transaction_id', $paymentID)
+                    ->orWhere('gateway_response->paymentID', $paymentID);
+            })
+            ->where('user_id', $request->user()->id)
+            ->with(['order.licenses', 'order.items.product', 'order.license'])
+            ->firstOrFail();
+
+        $lock = \Illuminate\Support\Facades\Cache::lock("bkash_payment_process:{$paymentID}", 15);
+        try {
+            $lock->block(5);
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
+            return response()->json(['status' => false, 'message' => 'Payment processing in progress.'], 409);
+        }
+
+        try {
+            $payment->refresh();
+            $order = $payment->order;
+
+            if ($order && $order->type === 'renewal' && $order->renewal_cycle_at
+                && !app(\App\Services\BkashRenewalCheckoutService::class)->isMatchingRenewalPayment($payment)) {
+                return response()->json(['status' => false, 'message' => 'Renewal payment verification failed.'], 409);
+            }
+
+            if ($order && ($order->status === OrderStatus::COMPLETED || $payment->status === 'verified')) {
+                $license = $order->licenses()->first()
+                    ?? ($order->license_id ? \App\Models\License::find($order->license_id) : null)
+                    ?? $order->license;
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Payment verified. License generated.',
+                    'license_reference' => $license ? 'XXXX-XXXX-' . substr($license->license_key_hash ?? '', -4) : null,
+                    'transaction_id' => $payment->transaction_id,
+                ]);
+            }
+
+            $bkashService = app(BKashPaymentService::class);
+            $result = $bkashService->executeOrQueryPayment($paymentID);
+
+            if (($result['transactionStatus'] ?? '') === 'Completed') {
+                if ($order->type === 'renewal' && $order->renewal_cycle_at && !$bkashService->isPaymentAmountValid($order, $result)) {
+                    return response()->json(['status' => false, 'message' => 'Renewal payment verification failed.'], 402);
+                }
+
+                $trxID = $result['trxID'] ?? $result['paymentID'];
+                $fulfillment = app(OrderFulfillmentService::class)->fulfillOrder($order, [
+                    'transaction_id' => $trxID,
+                    'gateway_response' => array_merge($payment->gateway_response ?? [], $result, ['paymentID' => $paymentID]),
+                ]);
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Payment verified. License generated.',
+                    'license_reference' => $fulfillment && $fulfillment['license'] ? 'XXXX-XXXX-' . substr($fulfillment['license']->license_key_hash ?? '', -4) : null,
+                    'transaction_id' => $trxID,
+                ]);
+            }
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Payment not completed.',
+                'transaction_status' => $result['transactionStatus'] ?? null,
+            ], 402);
+        } finally {
+            optional($lock)->release();
+        }
+    }
+
+    public function uploadReceipt(Request $request, $id)
+    {
+        $request->validate([
+            'receipt' => 'required|file|mimes:pdf,jpg,png,jpeg|max:2048'
+        ]);
+
+        $order = Order::where('id', $id)->where('user_id', $request->user()->id)->firstOrFail();
+
+        if (in_array($order->status, [OrderStatus::COMPLETED, OrderStatus::CANCELLED], true)) {
+            return response()->json(['status' => false, 'message' => 'This order cannot accept a receipt.'], 409);
+        }
+
+        if ($order->payments()->where('gateway', 'offline')->whereIn('status', [OrderStatus::PENDING, 'verified'])->exists()) {
+            return response()->json(['status' => false, 'message' => 'A receipt has already been submitted for this order.'], 409);
+        }
+
+        $file = $request->file('receipt');
+
+        // Security: Duplicate Receipt Hashing Prevention via unique database constraint
+        $receiptHash = hash_file('sha256', $file->getPathname());
+
+        $storageService = app(ReceiptStorageService::class);
+        $path = $storageService->storeUploadedReceipt($file);
+
+        // Create Payment Entry
+        $exchangeRate = $this->currencyService->getRate($order->currency);
+        $baseAmount = $this->currencyService->convertToBase($order->total_amount, $order->currency);
+
+        try {
+            DB::transaction(function () use ($order, $request, $exchangeRate, $baseAmount, $path, $receiptHash) {
+                $order->payments()->create([
+                    'license_id'           => $order->license_id,
+                    'user_id'              => $request->user()->id,
+                    'gateway'              => 'offline',
+                    'amount'               => $order->total_amount,
+                    'exchange_rate'        => $exchangeRate,
+                    'base_currency_amount' => $baseAmount,
+                    'status'               => 'pending',
+                    'payment_proof_path'   => $path,
+                    'receipt_hash'         => $receiptHash
+                ]);
+
+                $order->update(['status' => OrderStatus::AWAITING_PAYMENT]);
+            });
+        } catch (UniqueConstraintViolationException $e) {
+            Storage::disk(config('receipt.storage_disk', 'local'))->delete($path);
+            // Only treat a violation on payments.receipt_hash as a duplicate-receipt error.
+            // Any violation on a different column or table is a real bug — rethrow it.
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'receipt_hash') || str_contains($msg, 'payments_receipt_hash_unique')) {
+                return response()->json(['status' => false, 'message' => 'This receipt has already been submitted.'], 400);
+            }
+            throw $e;
+        } catch (QueryException $e) {
+            Storage::disk(config('receipt.storage_disk', 'local'))->delete($path);
+            // MySQL SQLSTATE 23000 / SQLite code 19 with receipt_hash mention → duplicate receipt.
+            $msg = $e->getMessage();
+            $isUniqueViolation = ($e->getCode() == 23000 || $e->getCode() == 19)
+                && (str_contains($msg, 'receipt_hash') || str_contains($msg, 'payments_receipt_hash_unique'));
+            if ($isUniqueViolation) {
+                return response()->json(['status' => false, 'message' => 'This receipt has already been submitted.'], 400);
+            }
+            throw $e;
+        } catch (\Throwable $e) {
+            Storage::disk(config('receipt.storage_disk', 'local'))->delete($path);
+            throw $e;
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Receipt uploaded. Waiting for admin approval.'
+        ]);
+    }
+}

@@ -1,0 +1,261 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Parameter \#1 \$value of method Carbon\\Carbon\:\:subDays\(\) expects float\|int, string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Console/Commands/CleanupExpiredLicenses.php
+
+		-
+			message: '#^Called ''env'' outside of the config directory which returns null when the config is cached, use ''config''\.$#'
+			identifier: larastan.noEnvCallsOutsideOfConfig
+			count: 1
+			path: app/Console/Commands/GenerateLicenseKeysCommand.php
+
+		-
+			message: '#^Dead catch \- Throwable is never thrown in the try block\.$#'
+			identifier: catch.neverThrown
+			count: 1
+			path: app/Console/Commands/MigrateLegacyLicenseKeys.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Order\:\:\$items\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Console/Commands/RepairMissingLicenses.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Order\:\:\$payment\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Console/Commands/RepairMissingLicenses.php
+
+		-
+			message: '#^Relation ''items'' is not found in App\\Models\\Order model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Console/Commands/RepairMissingLicenses.php
+
+		-
+			message: '#^Relation ''licenses'' is not found in App\\Models\\Order model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Console/Commands/RepairMissingLicenses.php
+
+		-
+			message: '#^Relation ''payment'' is not found in App\\Models\\Order model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Console/Commands/RepairMissingLicenses.php
+
+		-
+			message: '#^Relation ''license'' is not found in App\\Models\\LicenseActivation model\.$#'
+			identifier: larastan.relationExistence
+			count: 2
+			path: app/Http/Controllers/Api/V1/Admin/AnalyticsController.php
+
+		-
+			message: '#^Relation ''product'' is not found in App\\Models\\License model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Http/Controllers/Api/V1/Admin/AnalyticsController.php
+
+		-
+			message: '#^Relation ''user'' is not found in App\\Models\\License model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Http/Controllers/Api/V1/Admin/AnalyticsController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Payment\|Illuminate\\Database\\Eloquent\\Collection\<\(int\|string\), App\\Models\\Payment\>\:\:\$order\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Http/Controllers/Api/V1/Admin/PaymentController.php
+
+		-
+			message: '#^Relation ''order'' is not found in App\\Models\\Payment model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Http/Controllers/Api/V1/Admin/PaymentController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>id" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/V1/Admin/PaymentController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\License\:\:\$product\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/LicenseController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>slug" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/Api/V1/LicenseController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Payment\:\:\$order\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/OrderController.php
+
+		-
+			message: '#^Relation ''licenses'' is not found in App\\Models\\Order model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Http/Controllers/Api/V1/OrderController.php
+
+		-
+			message: '#^Relation ''order'' is not found in App\\Models\\Payment model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Http/Controllers/Api/V1/OrderController.php
+
+		-
+			message: '#^Relation ''prices'' is not found in App\\Models\\Product model\.$#'
+			identifier: larastan.relationExistence
+			count: 2
+			path: app/Http/Controllers/Api/V1/ProductController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\License\:\:\$product\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/WebhookController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\License\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/Api/V1/WebhookController.php
+
+		-
+			message: '#^Anonymous function has an unused use \$payload\.$#'
+			identifier: closure.unusedUse
+			count: 1
+			path: app/Http/Controllers/Api/V1/WebhookController.php
+
+		-
+			message: '#^Relation ''payment'' is not found in App\\Models\\Order model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Http/Controllers/Api/V1/WebhookController.php
+
+		-
+			message: '#^Variable \$eventId on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.variable
+			count: 1
+			path: app/Http/Controllers/Api/V1/WebhookController.php
+
+
+		-
+			message: '#^Unsafe access to private property App\\Models\\SystemSetting\:\:\$MISSING through static\:\:\.$#'
+			identifier: staticClassAccess.privateProperty
+			count: 2
+			path: app/Models/SystemSetting.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Throwable\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Providers/AppServiceProvider.php
+
+		-
+			message: '#^Call to function is_array\(\) with array will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/Services/BKashPaymentService.php
+
+		-
+			message: '#^Variable \$callbackUrl on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.variable
+			count: 1
+			path: app/Services/BKashPaymentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\License\:\:\$product\.$#'
+			identifier: property.notFound
+			count: 5
+			path: app/Services/LicenseService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\License\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/LicenseService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Payment\:\:\$order\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/LicenseService.php
+
+		-
+			message: '#^Relation ''product'' is not found in App\\Models\\License model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: app/Services/LicenseService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between mixed and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/LicenseService.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Http\\Request\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/LicenseService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>email" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/LicenseService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/LicenseService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>slug" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/LicenseService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Order\:\:\$payment\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OrderFulfillmentService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Order\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/OrderFulfillmentService.php
+
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Order\:\:\$items\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/StripePaymentService.php
+
+		-
+			message: '#^Parameter \#1 \$array \(list\<array\{key_id\: string, public_key\: string\}\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
+			count: 1
+			path: app/Support/OfflineLicenseVerification.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between non\-empty\-string and false will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Support/OfflineLicenseVerification.php
