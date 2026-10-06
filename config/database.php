@@ -60,6 +60,10 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+                // Optional connection-level query timeout (seconds). 0/null leaves
+                // the server default in place. Guards against a missing index
+                // turning into an unbounded query that exhausts the pool.
+                \PDO::ATTR_TIMEOUT => (int) env('DB_QUERY_TIMEOUT', 0) ?: null,
             ]) : [],
         ],
 
@@ -80,6 +84,7 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? \Pdo\Mysql::ATTR_SSL_CA : \PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+                \PDO::ATTR_TIMEOUT => (int) env('DB_QUERY_TIMEOUT', 0) ?: null,
             ]) : [],
         ],
 
@@ -125,6 +130,21 @@ return [
     | the migrations on disk haven't actually been run on the database.
     |
     */
+
+    /*
+    |--------------------------------------------------------------------------
+    | Slow Query Logging
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, any query whose execution time exceeds the configured
+    | threshold (milliseconds) is written to the `slow_query` log channel.
+    | Enabled by default in production only; set DB_SLOW_QUERY_LOG=true to
+    | force-enable it in other environments for profiling.
+    |
+    */
+
+    'slow_query_log' => env('DB_SLOW_QUERY_LOG', env('APP_ENV', 'production') === 'production'),
+    'slow_query_threshold_ms' => (int) env('DB_SLOW_QUERY_THRESHOLD_MS', 1000),
 
     'migrations' => [
         'table' => 'migrations',

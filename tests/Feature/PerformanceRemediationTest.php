@@ -621,7 +621,7 @@ class PerformanceRemediationTest extends TestCase
     // Fix 7 – History (existing tests, preserved)
     // =========================================================================
 
-    public function test_history_default_returns_flat_array_capped_at_100(): void
+    public function test_history_default_applies_default_page_size(): void
     {
         $user    = User::factory()->create();
         $product = Product::factory()->create();
@@ -646,8 +646,11 @@ class PerformanceRemediationTest extends TestCase
             'license_key' => $license->raw_key,
         ]);
 
+        // Pagination is always applied: the default page size (15) is returned,
+        // never the full 120-row history.
         $response->assertStatus(200)
-            ->assertHeaderMissing('X-Total-Count')
+            ->assertHeader('X-Total-Count', '120')
+            ->assertHeader('X-Per-Page', '15')
             ->assertJsonStructure([
                 'status',
                 'success',
@@ -660,7 +663,7 @@ class PerformanceRemediationTest extends TestCase
 
         $history = $response->json('data.history');
         $this->assertIsArray($history);
-        $this->assertCount(100, $history, 'Default history must be capped at 100 rows.');
+        $this->assertCount(15, $history, 'Default history must apply the default page size (15 rows).');
     }
 
     public function test_history_pagination_parameters_return_slice_and_headers(): void

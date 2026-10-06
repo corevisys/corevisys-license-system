@@ -83,13 +83,15 @@ const openConfig = (license) => {
 let pollInterval = null;
 
 onMounted(() => {
+    // Non-critical dashboard: poll infrequently to avoid sustained DB load
+    // (was every 60s, multiplied across all concurrent user sessions).
     pollInterval = setInterval(() => {
         router.reload({
             only: ['licenses'],
             preserveScroll: true,
             preserveState: true,
         });
-    }, 60000);
+    }, 180000);
 });
 
 onUnmounted(() => {

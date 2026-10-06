@@ -30,6 +30,8 @@ class AppServiceProvider extends ServiceProvider
         // Prohibit destructive database commands (migrate:fresh, migrate:refresh, migrate:reset, db:wipe) in production
         DB::prohibitDestructiveCommands($this->app->isProduction());
 
+        $this->registerSlowQueryLogger();
+
         if ($this->app->isProduction() && empty(config('services.license.signing_key_id'))) {
             throw new \RuntimeException('LICENSE_SIGNING_KEY_ID is missing or not configured in production.');
         }
@@ -79,6 +81,37 @@ class AppServiceProvider extends ServiceProvider
 
         \Illuminate\Support\Facades\RateLimiter::for('public-key', function (\Illuminate\Http\Request $request) {
             return \Illuminate\Cache\RateLimiting\Limit::perMinute(60)->by($request->ip());
+        });
+    }
+
+    /**
+     * Log queries exceeding the configured threshold to the `slow_query` channel.
+     *
+     * Bound parameters are intentionally NOT logged: they can contain license
+     * keys or password material. Only the SQL shape is recorded for profiling.
+     */
+    protected function registerSlowQueryLogger(): void
+    {
+        if (!config('database.slow_query_log', false)) {
+            return;
+        }
+
+        $thresholdMs = (int) config('database.slow_query_threshold_ms', 1000);
+        if ($thresholdMs <= 0) {
+            return;
+        }
+
+        DB::listen(function ($query) use ($thresholdMs) {
+            if ($query->time < $thresholdMs) {
+                return;
+            }
+
+            Log::channel('slow_query')->warning('Slow query detected', [
+                'connection'     => $query->connectionName,
+                'time_ms'        => $query->time,
+                'sql'            => $query->sql,
+                'bindings_count' => count($query->bindings),
+            ]);
         });
     }
 }

@@ -250,10 +250,11 @@ class LicenseController extends Controller
 
         if ($license->bound_domain && $this->normalizeDomain($license->bound_domain) !== $this->normalizeDomain($request->domain)) {
             $normalizedRequestDomain = $this->normalizeDomain($request->domain);
+            // Indexed existence check on the persisted normalized domain column,
+            // instead of loading the full activation history into memory.
             $hasHistory = $license->activations()
-                ->where('status', 'success')
-                ->get()
-                ->contains(fn ($act) => $this->normalizeDomain($act->request_domain) === $normalizedRequestDomain);
+                ->forNormalizedDomain($normalizedRequestDomain)
+                ->exists();
 
             // If license is SUSPENDED, still report it to enforce blocking
             // even on an unauthorized domain.
@@ -408,10 +409,13 @@ class LicenseController extends Controller
 
     public function history(Request $request)
     {
+        $defaultPerPage = max(1, (int) config('license.history_default_per_page', 15));
+        $maxPerPage = max(1, (int) config('license.history_max_per_page', 100));
+
         $request->validate([
             'license_key' => 'required|string',
             'page' => 'nullable|integer|min:1',
-            'per_page' => 'nullable|integer|min:1|max:100',
+            'per_page' => 'nullable|integer|min:1|max:' . $maxPerPage,
         ]);
 
         $license = $this->licenseService->findByKey($request->license_key);
@@ -424,16 +428,13 @@ class LicenseController extends Controller
             ->orderBy('created_at', 'desc')
             ->orderBy('id', 'desc');
 
-        $isPaginated = $request->has('page') || $request->has('per_page');
-
-        if ($isPaginated) {
-            $page = max(1, (int) $request->input('page', 1));
-            $perPage = min(100, max(1, (int) $request->input('per_page', 15)));
-            $total = (clone $query)->count();
-            $activations = $query->forPage($page, $perPage)->get(['id', 'status', 'created_at']);
-        } else {
-            $activations = $query->limit(100)->get(['id', 'status', 'created_at']);
-        }
+        // Pagination is always applied. `page` defaults to 1 and `per_page`
+        // defaults to a small page size, so a client can never accidentally
+        // receive (and deserialize) an arbitrarily large activation history.
+        $page = max(1, (int) $request->input('page', 1));
+        $perPage = min($maxPerPage, max(1, (int) $request->input('per_page', $defaultPerPage)));
+        $total = (clone $query)->count();
+        $activations = $query->forPage($page, $perPage)->get(['id', 'status', 'created_at']);
 
         $history = $activations->map(fn ($activation) => [
             'id' => $activation->id,
@@ -447,12 +448,10 @@ class LicenseController extends Controller
             'history' => $history,
         ]);
 
-        if ($isPaginated) {
-            $response->header('X-Total-Count', (string) $total)
-                ->header('X-Page', (string) $page)
-                ->header('X-Per-Page', (string) $perPage)
-                ->header('X-Total-Pages', (string) (ceil($total / $perPage) ?: 1));
-        }
+        $response->header('X-Total-Count', (string) $total)
+            ->header('X-Page', (string) $page)
+            ->header('X-Per-Page', (string) $perPage)
+            ->header('X-Total-Pages', (string) (ceil($total / $perPage) ?: 1));
 
         return $response;
     }

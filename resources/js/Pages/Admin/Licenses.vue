@@ -47,13 +47,15 @@ const getStatusColor = (status) => {
 let pollInterval = null;
 
 onMounted(() => {
+    // Non-critical dashboard: poll infrequently to avoid sustained DB load
+    // (was every 30s, multiplied across all concurrent admin sessions).
     pollInterval = setInterval(() => {
         router.reload({
             only: ['licenses'],
             preserveScroll: true,
             preserveState: true,
         });
-    }, 30000);
+    }, 120000);
 });
 
 onUnmounted(() => {

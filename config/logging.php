@@ -130,6 +130,13 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'slow_query' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/slow_queries.log'),
+            'level' => env('LOG_SLOW_QUERY_LEVEL', 'warning'),
+            'replace_placeholders' => true,
+        ],
+
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],

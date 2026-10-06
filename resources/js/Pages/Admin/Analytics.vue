@@ -15,13 +15,15 @@ const props = defineProps({
 let pollInterval = null;
 
 onMounted(() => {
+    // Non-critical dashboard: poll infrequently to avoid sustained DB load
+    // (was every 30s, multiplied across all concurrent admin sessions).
     pollInterval = setInterval(() => {
         router.reload({
             only: ['stats', 'revenue_trend', 'recent_activities'],
             preserveScroll: true,
             preserveState: true,
         });
-    }, 30000);
+    }, 120000);
 });
 
 onUnmounted(() => {
