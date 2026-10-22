@@ -55,24 +55,45 @@ class InstallController extends Controller
         return response()->json($result);
     }
 
-    public function install(Request $request): RedirectResponse
+    public function install(Request $request): View|RedirectResponse
     {
         if ($this->installer->isInstalled()) {
             abort(404);
         }
 
-        $validated = $request->validate([
-            'app_name' => 'required|string|max:100',
-            'app_url' => 'required|url',
-            'db_host' => 'required|string',
-            'db_port' => 'required|numeric',
-            'db_database' => 'required|string',
-            'db_username' => 'required|string',
-            'db_password' => 'nullable|string',
-            'admin_name' => 'required|string|max:100',
-            'admin_email' => 'required|email|max:191',
-            'admin_password' => 'required|string|min:8|confirmed',
-        ]);
+        $serverCheck = $this->installer->checkServerRequirements();
+        $suggestedUrl = rtrim($request->root(), '/');
+
+        $viewData = [
+            'requirements' => $serverCheck['requirements'],
+            'allSatisfied' => $serverCheck['all_satisfied'],
+            'suggestedUrl' => $suggestedUrl,
+        ];
+
+        // Manual validation so we can return view() directly (no session flash needed)
+        $rules = [
+            'app_name'                  => 'required|string|max:100',
+            'app_url'                   => 'required|url',
+            'db_host'                   => 'required|string',
+            'db_port'                   => 'required|numeric',
+            'db_database'               => 'required|string',
+            'db_username'               => 'required|string',
+            'db_password'               => 'nullable|string',
+            'admin_name'                => 'required|string|max:100',
+            'admin_email'               => 'required|email|max:191',
+            'admin_password'            => 'required|string|min:8|confirmed',
+        ];
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), $rules);
+
+        if ($validator->fails()) {
+            return view('install.index', array_merge($viewData, [
+                'errors'   => $validator->errors(),
+                'oldInput' => $request->all(),
+            ]));
+        }
+
+        $validated = $validator->validated();
 
         // 1. Verify database connection
         $test = $this->installer->testDatabaseConnection(
@@ -84,9 +105,10 @@ class InstallController extends Controller
         );
 
         if (!$test['success']) {
-            return back()->withInput()->withErrors([
-                'db_connection' => $test['message'],
-            ]);
+            return view('install.index', array_merge($viewData, [
+                'errors'   => new \Illuminate\Support\MessageBag(['db_connection' => [$test['message']]]),
+                'oldInput' => $request->all(),
+            ]));
         }
 
         try {
@@ -121,24 +143,25 @@ class InstallController extends Controller
             // 9. Mark installed
             $this->installer->markAsInstalled('Web Setup Wizard');
 
-            session(['installed_admin_email' => $validated['admin_email']]);
+            // Pass admin email via query string — no session flash needed
+            return redirect()->route('install.success', ['email' => $validated['admin_email']]);
 
-            return redirect()->route('install.success');
         } catch (\Throwable $e) {
-            return back()->withInput()->withErrors([
-                'install_error' => 'Installation failed: ' . $e->getMessage(),
-            ]);
+            return view('install.index', array_merge($viewData, [
+                'errors'   => new \Illuminate\Support\MessageBag(['install_error' => ['Installation failed: ' . $e->getMessage()]]),
+                'oldInput' => $request->all(),
+            ]));
         }
     }
 
-    public function success(): View|RedirectResponse
+    public function success(Request $request): View|RedirectResponse
     {
         if (!$this->installer->isInstalled()) {
             return redirect()->route('install.index');
         }
 
         return view('install.success', [
-            'adminEmail' => session('installed_admin_email'),
+            'adminEmail' => $request->query('email', ''),
         ]);
     }
 }

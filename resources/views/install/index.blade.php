@@ -1,6 +1,7 @@
 @extends('install.layout')
 
 @section('content')
+@php $oldInput ??= []; @endphp
 <div class="installer-body">
     <div class="step-header">
         <h1 class="step-title">Setup & Configuration</h1>
@@ -57,11 +58,11 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label for="app_name">Application Name</label>
-                    <input type="text" id="app_name" name="app_name" value="{{ old('app_name', 'Corevisys License') }}" required>
+                    <input type="text" id="app_name" name="app_name" value="{{ $oldInput['app_name'] ?? old('app_name', 'Corevisys License') }}" required>
                 </div>
                 <div class="form-group">
                     <label for="app_url">Application URL</label>
-                    <input type="url" id="app_url" name="app_url" value="{{ old('app_url', $suggestedUrl) }}" required placeholder="https://license.corevisys.com">
+                    <input type="url" id="app_url" name="app_url" value="{{ $oldInput['app_url'] ?? old('app_url', $suggestedUrl) }}" required placeholder="https://license.corevisys.com">
                     <span class="field-hint">Public root URL without trailing slash</span>
                 </div>
             </div>
@@ -76,23 +77,23 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label for="db_host">Database Host</label>
-                    <input type="text" id="db_host" name="db_host" value="{{ old('db_host', '127.0.0.1') }}" required>
+                    <input type="text" id="db_host" name="db_host" value="{{ $oldInput['db_host'] ?? old('db_host', '127.0.0.1') }}" required>
                 </div>
                 <div class="form-group">
                     <label for="db_port">Port</label>
-                    <input type="number" id="db_port" name="db_port" value="{{ old('db_port', 3306) }}" required>
+                    <input type="number" id="db_port" name="db_port" value="{{ $oldInput['db_port'] ?? old('db_port', 3306) }}" required>
                 </div>
                 <div class="form-group">
                     <label for="db_database">Database Name</label>
-                    <input type="text" id="db_database" name="db_database" value="{{ old('db_database') }}" required placeholder="cpaneluser_license">
+                    <input type="text" id="db_database" name="db_database" value="{{ $oldInput['db_database'] ?? old('db_database') }}" required placeholder="cpaneluser_license">
                 </div>
                 <div class="form-group">
                     <label for="db_username">Database Username</label>
-                    <input type="text" id="db_username" name="db_username" value="{{ old('db_username') }}" required placeholder="cpaneluser_dbuser">
+                    <input type="text" id="db_username" name="db_username" value="{{ $oldInput['db_username'] ?? old('db_username') }}" required placeholder="cpaneluser_dbuser">
                 </div>
                 <div class="form-group full-width">
                     <label for="db_password">Database Password</label>
-                    <input type="password" id="db_password" name="db_password" value="{{ old('db_password') }}" placeholder="Enter strong database password">
+                    <input type="password" id="db_password" name="db_password" placeholder="Enter strong database password">
                 </div>
             </div>
 
@@ -115,11 +116,11 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label for="admin_name">Admin Name</label>
-                    <input type="text" id="admin_name" name="admin_name" value="{{ old('admin_name', 'Administrator') }}" required>
+                    <input type="text" id="admin_name" name="admin_name" value="{{ $oldInput['admin_name'] ?? old('admin_name', 'Administrator') }}" required>
                 </div>
                 <div class="form-group">
                     <label for="admin_email">Admin Email</label>
-                    <input type="email" id="admin_email" name="admin_email" value="{{ old('admin_email') }}" required placeholder="admin@corevisys.com">
+                    <input type="email" id="admin_email" name="admin_email" value="{{ $oldInput['admin_email'] ?? old('admin_email') }}" required placeholder="admin@corevisys.com">
                 </div>
                 <div class="form-group">
                     <label for="admin_password">Password</label>

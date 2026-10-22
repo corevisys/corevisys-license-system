@@ -65,17 +65,20 @@ class InstallTest extends TestCase
     public function test_install_submission_validates_required_fields(): void
     {
         $response = $this->post('/install', []);
-        $response->assertSessionHasErrors([
-            'app_name',
-            'app_url',
-            'db_host',
-            'db_port',
-            'db_database',
-            'db_username',
-            'admin_name',
-            'admin_email',
-            'admin_password',
-        ]);
+        // Validation errors are returned inline in the view (no session flash),
+        // so we assert status 200 and that the $errors bag is non-empty.
+        $response->assertStatus(200);
+        $response->assertViewHas('errors', function ($errors) {
+            return $errors->has('app_name')
+                && $errors->has('app_url')
+                && $errors->has('db_host')
+                && $errors->has('db_port')
+                && $errors->has('db_database')
+                && $errors->has('db_username')
+                && $errors->has('admin_name')
+                && $errors->has('admin_email')
+                && $errors->has('admin_password');
+        });
     }
 
     public function test_success_page_redirects_if_not_installed(): void
