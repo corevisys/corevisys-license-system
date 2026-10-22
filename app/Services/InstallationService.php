@@ -273,6 +273,11 @@ class InstallationService
     public function clearAndCache(): void
     {
         try {
+            Artisan::call('package:discover', ['--ansi' => false]);
+        } catch (\Throwable $e) {
+            // Best effort — may fail on restricted hosts
+        }
+        try {
             Artisan::call('optimize:clear');
         } catch (\Throwable $e) {
             // Best effort

@@ -14,14 +14,14 @@ Write-Host "Project Root : $ProjectRoot"
 Write-Host "Output Dir   : $OutputDir"
 
 # 1. Prerequisite check
-Write-Host "`n[1/7] Verifying build tools..." -ForegroundColor Yellow
+Write-Host "`n[1/8] Verifying build tools..." -ForegroundColor Yellow
 foreach ($tool in @('git','composer','npm')) {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool not found in PATH." }
 }
 Write-Host "  git, composer, npm -- OK" -ForegroundColor Green
 
 # 2. Build frontend assets in the SOURCE repo (not staging)
-Write-Host "`n[2/7] Building production frontend assets (npm run build)..." -ForegroundColor Yellow
+Write-Host "`n[2/8] Building production frontend assets (npm run build)..." -ForegroundColor Yellow
 Push-Location $ProjectRoot
 try {
     & npm run build
@@ -35,7 +35,7 @@ $ZipName     = "corevisys-release-$Timestamp.zip"
 if (-not (Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
 $FinalZip    = Join-Path $OutputDir $ZipName
 
-Write-Host "`n[3/7] Exporting tracked files via git archive..." -ForegroundColor Yellow
+Write-Host "`n[3/8] Exporting tracked files via git archive..." -ForegroundColor Yellow
 New-Item -ItemType Directory -Path $StagingRoot -Force | Out-Null
 Push-Location $ProjectRoot
 try {
@@ -47,7 +47,7 @@ try {
 } finally { Pop-Location }
 
 # 4. Copy built assets into staging
-Write-Host "`n[4/7] Copying public/build into staging..." -ForegroundColor Yellow
+Write-Host "`n[4/8] Copying public/build into staging..." -ForegroundColor Yellow
 $SrcBuild = Join-Path $ProjectRoot "public\build"
 $DstBuild = Join-Path $StagingRoot "public\build"
 if (-not (Test-Path $SrcBuild)) { throw "public/build not found - did npm run build succeed?" }
@@ -55,11 +55,32 @@ if (Test-Path $DstBuild) { Remove-Item -Recurse -Force $DstBuild }
 Copy-Item -Recurse -Path $SrcBuild -Destination $DstBuild
 Write-Host "  public/build copied." -ForegroundColor Green
 
-# 5. Strip dev-only files
-Write-Host "`n[5/7] Stripping development artifacts..." -ForegroundColor Yellow
+# 5. Ship installer-bootstrap .env so /install works on fresh deploy
+#    SESSION_DRIVER=file + CACHE_STORE=file lets the wizard boot without a DB.
+#    The /install wizard overwrites this .env with full production values.
+#    We also inject a unique APP_KEY so Laravel can boot and render the CSRF form.
+Write-Host "`n[5/8] Preparing installer-bootstrap .env with unique APP_KEY..." -ForegroundColor Yellow
+$EnvBootstrap = Join-Path $ProjectRoot "deploy\.env.install-bootstrap"
+if (-not (Test-Path $EnvBootstrap)) { throw "deploy/.env.install-bootstrap not found in project root." }
+$EnvContent = Get-Content -Raw -Path $EnvBootstrap
+
+# Generate a unique APP_KEY for this build (installer will regenerate a final one)
+$AppKeyBytes = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($AppKeyBytes)
+$AppKeyB64 = [Convert]::ToBase64String($AppKeyBytes)
+$UniqueAppKey = "base64:$AppKeyB64"
+$EnvContent = $EnvContent -replace 'APP_KEY=', "APP_KEY=$UniqueAppKey"
+
+$DestEnvPath = Join-Path $StagingRoot ".env"
+Set-Content -Path $DestEnvPath -Value $EnvContent -Encoding UTF8 -NoNewline
+Write-Host "  .env (installer-bootstrap) written with unique APP_KEY." -ForegroundColor Green
+
+# 6. Strip dev-only files
+Write-Host "`n[6/8] Stripping development artifacts..." -ForegroundColor Yellow
 @('tests','AUDIT','.github','.gitattributes','.editorconfig',
   'phpunit.xml','phpunit.mysql.xml','phpstan.neon','phpstan-baseline.neon',
-  'vite.config.js','package.json','package-lock.json','jsconfig.json','scripts') |
+  'vite.config.js','package.json','package-lock.json','jsconfig.json','scripts',
+  'deploy','docs') |
 ForEach-Object {
     $p = Join-Path $StagingRoot $_
     if (Test-Path $p) { Remove-Item -Recurse -Force $p }
@@ -76,18 +97,16 @@ ForEach-Object {
     if (-not (Test-Path $gi)) { Set-Content -Path $gi -Value "*`n!.gitignore`n" }
 }
 
-# 6. Install production Composer deps
+# 7. Install production Composer deps
 #    --no-scripts skips package:discover which fails without .env (AppServiceProvider boot).
-#    Deploy instructions: after uploading and setting .env, run:
-#      php artisan package:discover --ansi
-#      php artisan optimize:clear
-Write-Host "`n[6/7] Running composer install --no-dev --optimize-autoloader --no-scripts..." -ForegroundColor Yellow
+#    The /install wizard runs optimize:clear+package:discover automatically after setup.
+Write-Host "`n[7/8] Running composer install --no-dev --optimize-autoloader --no-scripts..." -ForegroundColor Yellow
 Push-Location $StagingRoot
 try {
     & composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
     if ($LASTEXITCODE -ne 0) { throw "composer install failed (exit $LASTEXITCODE)" }
 } finally { Pop-Location }
-Write-Host "  Done. bootstrap/cache NOT pre-populated -- run package:discover on server after .env is ready." -ForegroundColor Green
+Write-Host "  Done. bootstrap/cache will be populated by the /install wizard after DB setup." -ForegroundColor Green
 
 # Remove any stale bootstrap/cache files (packages.php, services.php, config.php, routes.php)
 $cacheDir = Join-Path $StagingRoot "bootstrap\cache"
@@ -96,9 +115,10 @@ foreach ($f in @('packages.php','services.php','config.php','routes.php')) {
     if (Test-Path $fp) { Remove-Item -Force $fp; Write-Host "  Removed stale $f from bootstrap/cache." -ForegroundColor Yellow }
 }
 
-# 7. Exclusion audit
-Write-Host "`n[7/7] Exclusion audit..." -ForegroundColor Yellow
-$Forbidden = @('\.env$','\.git$','\\tests\\','\\AUDIT\\','node_modules','\.sql$','\.sqlite$','\.bak$','\.key$','installed\.lock$')
+# 8. Exclusion audit
+# Note: .env IS intentionally included (the installer-bootstrap stub).
+Write-Host "`n[8/8] Exclusion audit..." -ForegroundColor Yellow
+$Forbidden = @('\.git$','\\tests\\','\\AUDIT\\','node_modules','\.sql$','\.sqlite$','\.bak$','\.key$','installed\.lock$','deploy\\.env\.production\.example','deploy\\.env\.install-bootstrap')
 $Violations = @()
 Get-ChildItem -Path $StagingRoot -Recurse -Force | ForEach-Object {
     $rel = $_.FullName.Substring($StagingRoot.Length + 1)
