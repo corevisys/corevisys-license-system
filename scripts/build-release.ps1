@@ -146,11 +146,18 @@ $topLevel = ($arc.Entries | Where-Object { ($_.FullName -split '[/\\]').Count -l
              ForEach-Object { ($_.FullName -split '[/\\]')[0] } | Sort-Object -Unique)
 $arc.Dispose()
 
+$Sha256 = (Get-FileHash -Path $FinalZip -Algorithm SHA256).Hash.ToLower()
+$ShaFile = "$FinalZip.sha256"
+"$Sha256 *$ZipName" | Out-File -FilePath $ShaFile -Encoding ascii
+
 Write-Host "`n==========================================================" -ForegroundColor Green
 Write-Host " Release archive created successfully!" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host "Path      : $FinalZip"
 Write-Host "Size      : $sizeMB MB"
+Write-Host "SHA256    : $Sha256"
+Write-Host "Checksum  : $ShaFile"
 Write-Host "Entries   : $entryCount"
 Write-Host "Top-level : $($topLevel -join ', ')"
 Write-Host "==========================================================" -ForegroundColor Green
+
