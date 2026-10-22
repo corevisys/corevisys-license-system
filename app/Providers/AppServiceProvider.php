@@ -32,8 +32,14 @@ class AppServiceProvider extends ServiceProvider
 
         $this->registerSlowQueryLogger();
 
-        $isInstalling = (app()->runningInConsole() && !empty($_SERVER['argv']) && in_array('corevisys:install', $_SERVER['argv'], true))
-            || (!app()->runningInConsole() && request()->is('install*'));
+        // Bypass the signing-key guard whenever:
+        //  a) The system has not been installed yet (no installed.lock) — covers /, /login, /install, etc.
+        //  b) The request is explicitly on an install* path (post-install guard for web wizard re-entry)
+        //  c) The CLI installer command is running
+        $notYetInstalled = !file_exists(storage_path('installed.lock'));
+        $isInstalling = $notYetInstalled
+            || (!app()->runningInConsole() && request()->is('install*'))
+            || (app()->runningInConsole() && !empty($_SERVER['argv']) && in_array('corevisys:install', $_SERVER['argv'], true));
 
         if ($this->app->isProduction() && empty(config('services.license.signing_key_id')) && !$isInstalling) {
             throw new \RuntimeException('LICENSE_SIGNING_KEY_ID is missing or not configured in production.');

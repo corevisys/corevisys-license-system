@@ -21,16 +21,43 @@ class SigningKeyConfigSafetyTest extends TestCase
 
     public function test_missing_signing_key_id_fails_loudly_in_production(): void
     {
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('LICENSE_SIGNING_KEY_ID is missing or not configured in production.');
+        $lockFile = storage_path('installed.lock');
+        file_put_contents($lockFile, 'installed');
+
+        try {
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('LICENSE_SIGNING_KEY_ID is missing or not configured in production.');
+
+            $this->app['env'] = 'production';
+            config()->set('app.env', 'production');
+            config()->set('services.license.signing_key_id', null);
+
+            // Simulate AppServiceProvider::boot in production environment
+            $provider = new AppServiceProvider($this->app);
+            $provider->boot();
+        } finally {
+            if (file_exists($lockFile)) {
+                @unlink($lockFile);
+            }
+        }
+    }
+
+    public function test_missing_signing_key_id_bypassed_when_not_yet_installed(): void
+    {
+        $lockFile = storage_path('installed.lock');
+        if (file_exists($lockFile)) {
+            @unlink($lockFile);
+        }
 
         $this->app['env'] = 'production';
         config()->set('app.env', 'production');
         config()->set('services.license.signing_key_id', null);
 
-        // Simulate AppServiceProvider::boot in production environment
+        // AppServiceProvider::boot should not throw if not yet installed
         $provider = new AppServiceProvider($this->app);
         $provider->boot();
+
+        $this->assertTrue(true);
     }
 
     public function test_tests_can_set_their_own_signing_key_id_config(): void
