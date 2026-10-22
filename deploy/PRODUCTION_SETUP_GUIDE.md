@@ -57,27 +57,19 @@ npm run build
 
 ---
 
-## ৬. প্রোডাকশন এনভায়রনমেন্ট ফাইল (.env)
-```bash
-cp deploy/.env.production.example .env
-nano .env
-```
-`.env` ফাইলে নিচের তথ্যগুলো নিশ্চিত করুন:
-1. `APP_ENV=production`
-2. `APP_DEBUG=false`
-3. `APP_URL=https://license.corevisys.com`
-4. ডাটাবেজ তথ্য (`DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`)
-5. লাইসেন্স সাইনিং কি ও সিক্রেট পেপার (`php artisan license:generate-keys` দিয়ে তৈরি করুন)
+## ৬. স্বয়ংক্রিয় ইনস্টলেশন ও কনফিগারেশন
 
-এরপর নতুন Application Encryption Key ও লাইসেন্স কি তৈরি করুন এবং মাইগ্রেশন চালান:
+### উপায় ক: ব্রাউজার ওয়েব ইনস্টলার দিয়ে (রিকমেন্ডেড ⭐)
+ব্রাউজারে সরাসরি **`https://license.corevisys.com/install`** (বা ডোমেইনের রুট `https://license.corevisys.com`) ওপেন করুন:
+1. স্ক্রিনে স্বয়ংক্রিয় সেটআপ উইজার্ড ওপেন হবে।
+2. আপনার ডাটাবেজের নাম, ইউজারনেম, পাসওয়ার্ড ও অ্যাডমিন অ্যাকাউন্ট দিন।
+3. **Complete Installation** চাপলেই সিস্টেম নিজে থেকেই `.env` তৈরি, RSA-2048 কি জেনারেট, সিক্রেট পেপার সেটআপ, মাইগ্রেশন এবং অ্যাডমিন তৈরি সম্পন্ন করে দিবে।
+
+### উপায় খ: CLI ইন্টারেক্টিভ কমান্ড দিয়ে
 ```bash
-php artisan key:generate
-php artisan license:generate-keys
-# (কমান্ডের আউটপুট থেকে LICENSE_SIGNING_* ও LICENSE_PEPPER এর মানগুলো .env এ বসান)
-php artisan package:discover --ansi
-php artisan migrate --force
-php artisan storage:link
+php artisan corevisys:install
 ```
+টার্মিনাল থেকে ডাটাবেজ তথ্য চাইবে এবং সব কনফিগারেশন স্বয়ংক্রিয়ভাবে সম্পন্ন করবে।
 
 ---
 

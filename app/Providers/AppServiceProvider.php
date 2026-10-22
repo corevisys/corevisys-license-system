@@ -32,7 +32,10 @@ class AppServiceProvider extends ServiceProvider
 
         $this->registerSlowQueryLogger();
 
-        if ($this->app->isProduction() && empty(config('services.license.signing_key_id'))) {
+        $isInstalling = (app()->runningInConsole() && !empty($_SERVER['argv']) && in_array('corevisys:install', $_SERVER['argv'], true))
+            || (!app()->runningInConsole() && request()->is('install*'));
+
+        if ($this->app->isProduction() && empty(config('services.license.signing_key_id')) && !$isInstalling) {
             throw new \RuntimeException('LICENSE_SIGNING_KEY_ID is missing or not configured in production.');
         }
 

@@ -72,85 +72,33 @@ composer install --no-dev --prefer-dist --optimize-autoloader
 
 ---
 
-## ৫. প্রোডাকশন `.env` ফাইল কনফিগারেশন
+## ৫. স্বয়ংক্রিয় ইনস্টলেশন (২টি অত্যন্ত সহজ উপায় - কোনো ম্যানুয়াল কোডিং/এডিটিং ছাড়া)
 
-1. cPanel File Manager এ গিয়ে `license.corevisys.com` ফোল্ডারে ঢুকুন।
-   *(হিডেন ফাইল দেখতে Settings -> Show Hidden Files (dotfiles) টিক দিন)*
-2. `deploy/.env.production.example` ফাইলটির একটি কপি বানিয়ে নাম দিন `.env`।
-3. `.env` ফাইলটি এডিট করে নিচের মানগুলো ঠিক করুন:
-
-```ini
-APP_NAME="Corevisys License"
-APP_ENV=production
-APP_KEY=
-APP_DEBUG=false
-APP_URL=https://license.corevisys.com
-
-# আপনার cPanel ডাটাবেজ তথ্য
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=cpaneluser_license
-DB_USERNAME=cpaneluser_dbuser
-DB_PASSWORD=your_actual_db_password
-
-SESSION_DRIVER=database
-QUEUE_CONNECTION=database
-CACHE_STORE=database
-
-# ইমেইল (Namecheap Webmail বা SMTP)
-MAIL_MAILER=smtp
-MAIL_HOST=mail.corevisys.com
-MAIL_PORT=465
-MAIL_USERNAME=no-reply@corevisys.com
-MAIL_PASSWORD=your_mail_password
-MAIL_ENCRYPTION=ssl
-MAIL_FROM_ADDRESS="no-reply@corevisys.com"
-MAIL_FROM_NAME="Corevisys License"
-
-# লাইসেন্স সাইনিং কি (RSA Keys) ও সিক্রেট পেপার
-# (নিচের স্টেপ ৬ এ `php artisan license:generate-keys` কমান্ড রান করে পাওয়া মানগুলো এখানে বসাবেন)
-LICENSE_SIGNING_PRIVATE_KEY="আপনার_প্রাইভেট_কি"
-LICENSE_SIGNING_PUBLIC_KEY="আপনার_পাবলিক_কি"
-LICENSE_SIGNING_KEY_ID=corevisys-key-1
-LICENSE_SIGNING_ALGORITHM=RSA-SHA256
-LICENSE_PEPPER=আপনার_৬৪_ক্যারেক্টার_হেক্স_পেপার
-OFFLINE_VALIDITY_DAYS=7
-PULSE_INTERVAL_DAYS=30
-PULSE_GRACE_DAYS=7
-```
+### উপায় ১: ব্রাউজার ওয়েব ইনস্টলার দিয়ে (সবচেয়ে সহজ ও রিকমেন্ডেড ⭐)
+ফাইল আপলোড শেষে কোনো ফাইল এডিট করতে হবে না:
+1. ব্রাউজারে ভিজিট করুন: **`https://license.corevisys.com/install`** (বা সরাসরি `https://license.corevisys.com`)
+2. স্ক্রিনে সুন্দর ওয়েব ইনস্টলেশন উইজার্ড দেখতে পাবেন।
+3. আপনার cPanel এ তৈরি করা ডাটাবেজ নাম (`Database Name`), ইউজারনেম ও পাসওয়ার্ড দিন।
+4. **Test Connection** বাটনে ক্লিক করে কানেকশন ঠিক আছে কিনা নিশ্চিত করুন।
+5. আপনার পছন্দের অ্যাডমিন নাম, ইমেইল এবং স্ট্রং পাসওয়ার্ড দিন।
+6. **Complete Installation & Initialize Server** বাটনে ক্লিক করুন।
+   - *সিস্টেম স্বয়ংক্রিয়ভাবে `.env` ফাইল তৈরি করবে, শক্তিশালী অ্যাপ্লিকেশন এনক্রিপশন কি তৈরি করবে, লাইসেন্স সাইনিং কি (RSA-2048) ও সিক্রেট পেপার জেনারেট করবে, ডাটাবেজ টেবিল মাইগ্রেট করবে এবং অ্যাডমিন অ্যাকাউন্ট সেটআপ করে ফেলবে।*
+7. কাজ শেষ! সরাসরি লগইন স্ক্রিনে নিয়ে যাবে।
 
 ---
 
-## ৬. মাইগ্রেশন ও অপ্টিমাইজেশন রান করা
-
-Terminal এ গিয়ে রান করুন:
+### উপায় ২: cPanel Terminal দিয়ে (ইন্টারেক্টিভ কমান্ড)
+যদি আপনি টার্মিনাল ব্যবহার করতে পছন্দ করেন:
 ```bash
 cd ~/license.corevisys.com
-
-# ১) অ্যাপ কি তৈরি
-php artisan key:generate
-
-# ২) লাইসেন্স সাইনিং কি ও সিক্রেট পেপার তৈরি (যা আউটপুট দিবে তা কপি করে .env ফাইলে বসান)
-php artisan license:generate-keys
-
-# ৩) প্যাকেজ ডিসকভারি
-php artisan package:discover --ansi
-
-# ৪) ডাটাবেজ টেবিল তৈরি
-php artisan migrate --force
-
-# ৫) স্টোরেজ লিংক তৈরি
-php artisan storage:link
-
-# ৬) ক্যাশিং অপ্টিমাইজেশন
-php artisan optimize:clear
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+php artisan corevisys:install
 ```
+- কমান্ডটি রান করার পর আপনাকে ডাটাবেজ হোস্ট, ডাটাবেজের নাম, ইউজারনেম এবং পাসওয়ার্ড জিজ্ঞেস করবে।
+- তথ্য প্রদান করলে এটি স্বয়ংক্রিয়ভাবে `.env` তৈরি করবে, সব কি (RSA ও Pepper) জেনারেট করবে এবং মাইগ্রেশন রান করে ইন্সটলেশন কমপ্লিট করবে।
 
-*(যদি Terminal না থাকে, আপনি cPanel Cron Jobs এ গিয়ে এই কমান্ডটি একবার রান করে নিতে পারেন: `cd /home/cpaneluser/license.corevisys.com && php artisan migrate --force`)*
+---
+
+## ৬. Namecheap Free SSL (HTTPS) নিশ্চিত করা
 
 ---
 

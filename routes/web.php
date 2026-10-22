@@ -13,16 +13,27 @@ use Inertia\Inertia;
 | and never touch business logic, services, payments, or license state.
 */
 
-// cPanel web installer removed (FIX-003).
-// Use `php artisan corevisys:install` from the CLI instead.
+// Corevisys Installation Routes (Disabled once installed.lock exists)
+Route::middleware('web')->group(function () {
+    Route::get('/install', [\App\Http\Controllers\InstallController::class, 'index'])->name('install.index');
+    Route::post('/install/test-db', [\App\Http\Controllers\InstallController::class, 'testDb'])->name('install.testDb');
+    Route::post('/install', [\App\Http\Controllers\InstallController::class, 'install'])->name('install.process');
+    Route::get('/install/success', [\App\Http\Controllers\InstallController::class, 'success'])->name('install.success');
+});
 
 Route::get('/', function () {
+    if (!app()->environment('testing') && !file_exists(storage_path('installed.lock'))) {
+        return redirect()->route('install.index');
+    }
+
     try {
-        if (!\Illuminate\Support\Facades\Schema::hasTable('products')) {
-            abort(503, 'Application not yet installed. Run: php artisan corevisys:install');
+        if (!app()->environment('testing') && !\Illuminate\Support\Facades\Schema::hasTable('products')) {
+            return redirect()->route('install.index');
         }
     } catch (\Throwable $e) {
-        abort(503, 'Database unavailable. Check your .env configuration.');
+        if (!app()->environment('testing')) {
+            return redirect()->route('install.index');
+        }
     }
 
     return Inertia::render('Public/Home', [

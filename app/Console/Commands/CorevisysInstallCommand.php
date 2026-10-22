@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\User;
+use App\Services\InstallationService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -14,16 +15,19 @@ class CorevisysInstallCommand extends Command
 {
     protected $signature = 'corevisys:install
                             {--force : Overwrite existing lock file and rerun installation}
+                            {--setup-env : Interactively configure database and environment before installing}
                             {--admin-email= : Email address for the administrator}
                             {--admin-password= : Initial password for the administrator (leave empty to prompt or generate randomly)}';
 
     protected $description = 'Install and initialize CoreVisys License Server (database migrations, default settings, and secure admin account)';
 
     private string $lockFile;
+    private InstallationService $installer;
 
-    public function __construct()
+    public function __construct(InstallationService $installer)
     {
         parent::__construct();
+        $this->installer = $installer;
         $this->lockFile = storage_path('installed.lock');
     }
 
@@ -36,15 +40,37 @@ class CorevisysInstallCommand extends Command
             return self::FAILURE;
         }
 
-        // 1. Verify Database Connection
+        // 1. Verify or Configure Database Connection
         $this->line('1. Verifying database connection...');
+        $connected = false;
+        $connectionError = null;
+
         try {
             DB::connection()->getPdo();
-            $this->info('   [OK] Database connection verified.');
+            $connected = true;
         } catch (\Throwable $e) {
-            $this->error('   [FAIL] Database connection failed: ' . $e->getMessage());
-            return self::FAILURE;
+            $connected = false;
+            $connectionError = $e->getMessage();
         }
+
+        if (!$connected || $this->option('setup-env')) {
+            if ($this->input->isInteractive()) {
+                $this->warn('Database connection is not yet configured or failed.');
+                if ($this->confirm('Would you like to configure your database & environment now?', true)) {
+                    if (!$this->interactiveEnvSetup()) {
+                        return self::FAILURE;
+                    }
+                } elseif (!$connected) {
+                    $this->error('   [FAIL] Cannot proceed without a valid database connection.');
+                    return self::FAILURE;
+                }
+            } elseif (!$connected) {
+                $this->error('   [FAIL] Database connection failed: ' . $connectionError);
+                return self::FAILURE;
+            }
+        }
+
+        $this->info('   [OK] Database connection verified.');
 
         // 2. Run Database Migrations
         $this->line('2. Running database migrations...');
@@ -151,7 +177,7 @@ class CorevisysInstallCommand extends Command
             $this->warn('   [WARN] Storage link: ' . $e->getMessage());
         }
 
-        // 6. Clear Optimizations (best-effort — may fail under test parallelism on Windows)
+        // 6. Clear Optimizations
         $this->line('6. Refreshing application cache...');
         try {
             Artisan::call('optimize:clear');
@@ -168,5 +194,55 @@ class CorevisysInstallCommand extends Command
         $this->info('CoreVisys License Server installation completed successfully!');
 
         return self::SUCCESS;
+    }
+
+    private function interactiveEnvSetup(): bool
+    {
+        $this->line('--- Environment & Database Setup ---');
+
+        $appName = $this->ask('Application Name', 'Corevisys License');
+        $appUrl = $this->ask('Application URL', 'https://license.corevisys.com');
+
+        $valid = false;
+        $dbConfig = [];
+
+        while (!$valid) {
+            $host = $this->ask('Database Host', '127.0.0.1');
+            $port = $this->ask('Database Port', '3306');
+            $database = $this->ask('Database Name');
+            $username = $this->ask('Database Username');
+            $password = $this->secret('Database Password (input will be hidden)') ?? '';
+
+            $this->line('Testing database connection...');
+            $test = $this->installer->testDatabaseConnection($host, $port, $database, $username, $password);
+
+            if ($test['success']) {
+                $this->info('   [OK] Database connection successful!');
+                $valid = true;
+                $dbConfig = [
+                    'app_name' => $appName,
+                    'app_url' => $appUrl,
+                    'db_host' => $host,
+                    'db_port' => $port,
+                    'db_database' => $database,
+                    'db_username' => $username,
+                    'db_password' => $password,
+                ];
+            } else {
+                $this->error('   [FAIL] ' . $test['message']);
+                if (!$this->confirm('Would you like to try again?', true)) {
+                    return false;
+                }
+            }
+        }
+
+        $this->line('Generating encryption keys, RSA signing keypair & LICENSE_PEPPER...');
+        $keys = $this->installer->generateKeys();
+
+        $this->line('Writing .env file...');
+        $this->installer->setupEnvironment($dbConfig, $keys);
+        $this->info('   [OK] .env configured successfully.');
+
+        return true;
     }
 }
