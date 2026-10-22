@@ -67,11 +67,14 @@ nano .env
 2. `APP_DEBUG=false`
 3. `APP_URL=https://license.corevisys.com`
 4. ডাটাবেজ তথ্য (`DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`)
-5. লাইসেন্স সাইনিং কি (`LICENSE_SIGNING_PRIVATE_KEY` ও `LICENSE_SIGNING_PUBLIC_KEY`)
+5. লাইসেন্স সাইনিং কি ও সিক্রেট পেপার (`php artisan license:generate-keys` দিয়ে তৈরি করুন)
 
-এরপর নতুন Application Encryption Key তৈরি করুন এবং মাইগ্রেশন চালান:
+এরপর নতুন Application Encryption Key ও লাইসেন্স কি তৈরি করুন এবং মাইগ্রেশন চালান:
 ```bash
 php artisan key:generate
+php artisan license:generate-keys
+# (কমান্ডের আউটপুট থেকে LICENSE_SIGNING_* ও LICENSE_PEPPER এর মানগুলো .env এ বসান)
+php artisan package:discover --ansi
 php artisan migrate --force
 php artisan storage:link
 ```

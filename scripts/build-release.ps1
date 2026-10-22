@@ -114,10 +114,28 @@ if ($Violations.Count -gt 0) {
 Write-Host "  PASSED -- no forbidden files." -ForegroundColor Green
 
 # Zip
+# CreateFromDirectory writes BACKSLASH entry separators on Windows. On Linux /
+# cPanel those extract as literal filenames instead of directories. Build the
+# archive manually with forward slashes so it extracts correctly on the server.
 Write-Host "`n[ZIP] Compressing to $FinalZip..." -ForegroundColor Yellow
 if (Test-Path $FinalZip) { Remove-Item -Force $FinalZip }
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::CreateFromDirectory($StagingRoot, $FinalZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+
+$ZipStream = [System.IO.File]::Open($FinalZip, [System.IO.FileMode]::Create)
+$ZipArchive = New-Object System.IO.Compression.ZipArchive($ZipStream, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+    Get-ChildItem -Path $StagingRoot -Recurse -File -Force | ForEach-Object {
+        $rel = $_.FullName.Substring($StagingRoot.Length + 1).Replace([char]92, [char]47)
+        $entry = $ZipArchive.CreateEntry($rel, [System.IO.Compression.CompressionLevel]::Optimal)
+        $entryStream = $entry.Open()
+        $fileStream = [System.IO.File]::OpenRead($_.FullName)
+        try { $fileStream.CopyTo($entryStream) } finally { $fileStream.Dispose(); $entryStream.Dispose() }
+    }
+} finally {
+    $ZipArchive.Dispose()
+    $ZipStream.Dispose()
+}
 Remove-Item -Recurse -Force $StagingRoot
 
 $info = Get-Item $FinalZip

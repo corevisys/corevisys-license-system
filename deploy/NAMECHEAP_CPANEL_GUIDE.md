@@ -108,11 +108,13 @@ MAIL_ENCRYPTION=ssl
 MAIL_FROM_ADDRESS="no-reply@corevisys.com"
 MAIL_FROM_NAME="Corevisys License"
 
-# লাইসেন্স সাইনিং কি (RSA Keys)
+# লাইসেন্স সাইনিং কি (RSA Keys) ও সিক্রেট পেপার
+# (নিচের স্টেপ ৬ এ `php artisan license:generate-keys` কমান্ড রান করে পাওয়া মানগুলো এখানে বসাবেন)
 LICENSE_SIGNING_PRIVATE_KEY="আপনার_প্রাইভেট_কি"
 LICENSE_SIGNING_PUBLIC_KEY="আপনার_পাবলিক_কি"
 LICENSE_SIGNING_KEY_ID=corevisys-key-1
 LICENSE_SIGNING_ALGORITHM=RSA-SHA256
+LICENSE_PEPPER=আপনার_৬৪_ক্যারেক্টার_হেক্স_পেপার
 OFFLINE_VALIDITY_DAYS=7
 PULSE_INTERVAL_DAYS=30
 PULSE_GRACE_DAYS=7
@@ -126,16 +128,23 @@ Terminal এ গিয়ে রান করুন:
 ```bash
 cd ~/license.corevisys.com
 
-# অ্যাপ কি তৈরি
+# ১) অ্যাপ কি তৈরি
 php artisan key:generate
 
-# ডাটাবেজ টেবিল তৈরি
+# ২) লাইসেন্স সাইনিং কি ও সিক্রেট পেপার তৈরি (যা আউটপুট দিবে তা কপি করে .env ফাইলে বসান)
+php artisan license:generate-keys
+
+# ৩) প্যাকেজ ডিসকভারি
+php artisan package:discover --ansi
+
+# ৪) ডাটাবেজ টেবিল তৈরি
 php artisan migrate --force
 
-# স্টোরেজ লিংক তৈরি
+# ৫) স্টোরেজ লিংক তৈরি
 php artisan storage:link
 
-# ক্যাশিং অপ্টিমাইজেশন
+# ৬) ক্যাশিং অপ্টিমাইজেশন
+php artisan optimize:clear
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
