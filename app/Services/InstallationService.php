@@ -175,9 +175,9 @@ class InstallationService
             'DB_DATABASE' => $data['db_database'] ?? 'corevisys_license',
             'DB_USERNAME' => $data['db_username'] ?? 'corevisys_user',
             'DB_PASSWORD' => $data['db_password'] ?? '',
-            'SESSION_DRIVER' => 'database',
+            'SESSION_DRIVER' => 'file',
             'QUEUE_CONNECTION' => 'database',
-            'CACHE_STORE' => 'database',
+            'CACHE_STORE' => 'file',
             'LICENSE_SIGNING_PRIVATE_KEY' => '"' . $keys['private_key'] . '"',
             'LICENSE_SIGNING_PUBLIC_KEY' => '"' . $keys['public_key'] . '"',
             'LICENSE_SIGNING_KEY_ID' => $keys['key_id'],
@@ -214,6 +214,8 @@ class InstallationService
         Config::set('app.url', $data['app_url'] ?? 'https://license.corevisys.com');
         Config::set('app.key', $keys['app_key']);
         Config::set('app.license_pepper', $keys['pepper']);
+        Config::set('session.driver', 'file');
+        Config::set('cache.default', 'file');
         Config::set('services.license.signing_key_id', $keys['key_id']);
         Config::set('services.license.signing_private_key', $keys['private_key']);
         Config::set('services.license.signing_public_key', $keys['public_key']);
@@ -229,16 +231,24 @@ class InstallationService
 
     public function runMigrations(): void
     {
-        Artisan::call('migrate', ['--force' => true]);
+        $exitCode = Artisan::call('migrate', ['--force' => true]);
+        if ($exitCode !== 0) {
+            $output = Artisan::output();
+            throw new \RuntimeException('Database migration failed (exit code ' . $exitCode . '): ' . trim($output));
+        }
     }
 
     public function seedSystemSettings(): void
     {
         if (class_exists(\Database\Seeders\SystemSettingsSeeder::class)) {
-            Artisan::call('db:seed', [
+            $exitCode = Artisan::call('db:seed', [
                 '--class' => 'Database\Seeders\SystemSettingsSeeder',
                 '--force' => true,
             ]);
+            if ($exitCode !== 0) {
+                $output = Artisan::output();
+                throw new \RuntimeException('Database seeding failed (exit code ' . $exitCode . '): ' . trim($output));
+            }
         }
     }
 

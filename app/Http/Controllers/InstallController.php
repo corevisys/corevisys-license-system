@@ -90,6 +90,9 @@ class InstallController extends Controller
         }
 
         try {
+            @ini_set('max_execution_time', '300');
+            @set_time_limit(300);
+
             // 2. Generate RSA keypair, LICENSE_PEPPER, APP_KEY
             $keys = $this->installer->generateKeys();
 
