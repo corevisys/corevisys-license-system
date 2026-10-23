@@ -47,7 +47,12 @@ class LicenseController extends Controller
                 $canRenew = ! $blockedFromRenewal && (
                     $l->status === 'expired'
                     || ! $l->expires_at
-                    || $l->expires_at->diffInDays(now(), false) <= 30
+                    // Call diffInDays FROM now() TO expires_at so a future expiry
+                    // always returns a positive integer (e.g. 60 for 60 days ahead).
+                    // Calling $futureDate->diffInDays(now()) returns -60, so
+                    // "-60 <= 30" would incorrectly show Renew on ALL active licenses.
+                    || ($l->expires_at->isFuture() && now()->diffInDays($l->expires_at) <= 30)
+                    || $l->expires_at->isPast()
                     || ($l->grace_expires_at && $l->grace_expires_at->isFuture())
                     || $l->type === 'trial'
                 );

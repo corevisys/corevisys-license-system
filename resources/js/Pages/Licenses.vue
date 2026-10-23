@@ -10,8 +10,8 @@ import TableHead from '@/Components/UI/TableHead.vue';
 import TableHeaderCell from '@/Components/UI/TableHeaderCell.vue';
 import TableRow from '@/Components/UI/TableRow.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head, router } from '@inertiajs/vue3';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { Head, router, usePage } from '@inertiajs/vue3';
+import { computed, onMounted, onUnmounted, ref, watchEffect } from 'vue';
 import axios from 'axios';
 import { Copy, LoaderCircle } from 'lucide-vue-next';
 
@@ -111,6 +111,22 @@ const selectedGateway = ref('');
 const selectedPlanId = ref('');
 const renewError = ref('');
 
+const page = usePage();
+
+// Sync backend flash messages into the renewal modal so the user sees
+// errors/success inside the dialog instead of behind it.
+watchEffect(() => {
+    if (!renewingLicense.value) return;
+    const flash = page.props.flash ?? {};
+    if (flash.error) {
+        renewError.value = flash.error;
+        submittingRenewal.value = false;
+    }
+    if (flash.success) {
+        closeRenew();
+    }
+});
+
 const GATEWAY_META = {
     stripe: { label: 'Card (Stripe)', desc: 'Pay with a credit or debit card' },
     bkash: { label: 'bKash', desc: 'Pay via bKash mobile wallet' },
@@ -171,6 +187,19 @@ const submitRenewal = () => {
         product_price_id: selectedPlanId.value,
     }, {
         preserveScroll: true,
+        // For online gateways (Stripe/bKash), Inertia.location() redirects
+        // externally — onSuccess never fires and that's expected.
+        // For offline, onSuccess fires when back()->with('success') is returned
+        // and we close the modal so the page flash is visible.
+        onSuccess: () => {
+            closeRenew();
+        },
+        onError: () => {
+            // Validation errors (422) land here; flash errors are handled by
+            // the watchEffect above.
+            submittingRenewal.value = false;
+            renewError.value = renewError.value || 'Something went wrong. Please try again.';
+        },
         onFinish: () => {
             submittingRenewal.value = false;
         },
