@@ -403,35 +403,92 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/licenses', function () {
         $user = auth()->user();
+
+        // Which renewal gateways are enabled (stripe/bkash toggled in admin settings,
+        // offline/manual always available). Passed to the page so the renew modal can
+        // offer an explicit choice instead of blindly POSTing an empty request.
+        $gatewaySettings = \App\Models\SystemSetting::where('key', 'like', 'gateway_%_active')->pluck('value', 'key');
+        $availableGateways = [];
+        if (($gatewaySettings['gateway_stripe_active'] ?? '0') === '1') {
+            $availableGateways[] = 'stripe';
+        }
+        if (($gatewaySettings['gateway_bkash_active'] ?? '0') === '1') {
+            $availableGateways[] = 'bkash';
+        }
+        $availableGateways[] = 'offline';
+
         $licenses = \App\Models\License::with('product')
             ->where('user_id', $user->id)
             ->get()
-            ->map(fn($l) => [
-                'id' => $l->id,
-                'product_name' => $l->product->name,
-                'link_renew' => route('licenses.renew', $l->id),
-                'type' => ucfirst($l->type),
-                'key_preview' => 'XXXX-XXXX-' . substr($l->license_key_hash, -4),
-                'status' => $l->status,
-                'expires_at' => $l->expires_at ? $l->expires_at->format('Y-m-d') : null,
-                'last_check_at' => $l->last_check_at ? $l->last_check_at->toDateTimeString() : null,
-                'is_running' => $l->last_check_at && $l->last_check_at->isAfter(now()->subHours(25)),
-                'is_expiring_soon' => $l->expires_at && $l->expires_at->isFuture() && $l->expires_at->diffInDays(now()) <= 30,
-                'can_renew' => $l->type === 'trial' || ($l->type === 'subscription' && $l->status !== 'active') || $l->is_expiring_soon,
-                'bound_domain' => $l->bound_domain,
-                'bound_ip' => $l->bound_ip,
-                'upgrade_plans' => $l->type === 'full' ? [] : \App\Models\ProductPrice::where('product_id', $l->product_id)
-                    ->get()
-                    ->map(fn($p) => [
-                        'id' => $p->id,
-                        'name' => ($p->type === 'subscription' ? ($p->billing_period >= 365 ? 'Yearly' : 'Monthly') : ucfirst($p->type)) . ' Plan',
-                        'amount' => $p->amount,
-                        'currency' => $p->currency,
-                        'type' => $p->type
-                    ]),
-            ]);
+            ->map(function ($l) {
+                // Renew is offered when the license is expired, expiring within 30
+                // days (or has no expiry), is inside an active grace window, or is a
+                // trial. Suspended/revoked/cancelled licenses may NEVER be renewed.
+                $blockedFromRenewal = in_array($l->status, ['suspended', 'revoked', 'cancelled'], true);
+                $canRenew = ! $blockedFromRenewal && (
+                    $l->status === 'expired'
+                    || ! $l->expires_at
+                    || $l->expires_at->diffInDays(now(), false) <= 30
+                    || ($l->grace_expires_at && $l->grace_expires_at->isFuture())
+                    || $l->type === 'trial'
+                );
 
-        return Inertia::render('Licenses', ['licenses' => $licenses]);
+                // The plan the license was originally purchased on — excluded from
+                // the upgrade list so users are not offered the plan they already have.
+                $currentPriceId = $l->order_id
+                    ? \App\Models\OrderItem::where('order_id', $l->order_id)
+                        ->where('product_id', $l->product_id)
+                        ->value('product_price_id')
+                    : null;
+
+                return [
+                    'id' => $l->id,
+                    'product_name' => $l->product->name,
+                    'link_renew' => route('licenses.renew', $l->id),
+                    'type' => ucfirst($l->type),
+                    'key_preview' => 'XXXX-XXXX-' . substr($l->license_key_hash, -4),
+                    'status' => $l->status,
+                    'expires_at' => $l->expires_at ? $l->expires_at->format('Y-m-d') : null,
+                    'last_check_at' => $l->last_check_at ? $l->last_check_at->toDateTimeString() : null,
+                    'is_running' => $l->last_check_at && $l->last_check_at->isAfter(now()->subHours(25)),
+                    'is_expiring_soon' => $l->expires_at && $l->expires_at->isFuture() && $l->expires_at->diffInDays(now()) <= 30,
+                    'can_renew' => $canRenew,
+                    'renew_plans' => \App\Models\ProductPrice::where('product_id', $l->product_id)
+                        ->whereIn('type', ['subscription', 'full', 'trial'])
+                        ->get()
+                        ->map(fn($p) => [
+                            'id' => $p->id,
+                            'name' => ($p->type === 'subscription' ? ($p->billing_period >= 365 ? 'Yearly' : 'Monthly') : ucfirst($p->type)) . ' Plan',
+                            'amount' => $p->amount,
+                            'currency' => $p->currency,
+                            'type' => $p->type,
+                            'billing_period' => $p->billing_period,
+                        ]),
+                    'last_gateway' => \App\Models\Payment::where('license_id', $l->id)->latest()->value('gateway'),
+                    'bound_domain' => $l->bound_domain,
+                    'bound_ip' => $l->bound_ip,
+                    // Full/lifetime editions are the top tier — no upgrade plans.
+                    // Otherwise offer non-trial plans excluding the current one.
+                    'upgrade_plans' => $l->type === 'full'
+                        ? []
+                        : \App\Models\ProductPrice::where('product_id', $l->product_id)
+                            ->where('type', '!=', 'trial')
+                            ->when($currentPriceId, fn ($q) => $q->where('id', '!=', $currentPriceId))
+                            ->get()
+                            ->map(fn($p) => [
+                                'id' => $p->id,
+                                'name' => ($p->type === 'subscription' ? ($p->billing_period >= 365 ? 'Yearly' : 'Monthly') : ucfirst($p->type)) . ' Plan',
+                                'amount' => $p->amount,
+                                'currency' => $p->currency,
+                                'type' => $p->type
+                            ]),
+                ];
+            });
+
+        return Inertia::render('Licenses', [
+            'licenses' => $licenses,
+            'availableGateways' => $availableGateways,
+        ]);
     })->name('licenses');
 
     Route::post('/licenses/{id}/reveal', function ($id) {
@@ -466,7 +523,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/licenses/{id}/config', function ($id) {
         $license = \App\Models\License::with('product')->findOrFail($id);
-        
+
         // Ensure user owns the license
         if ($license->user_id !== auth()->id()) {
             abort(403);
@@ -476,38 +533,89 @@ Route::middleware('auth')->group(function () {
             'license' => [
                 'id' => $license->id,
                 'product_name' => $license->product->name,
+                'product_code' => $license->product?->slug,
+                'license_type' => $license->type,
                 'status' => $license->status,
                 'bound_domain' => $license->bound_domain,
                 'bound_ip' => $license->bound_ip,
+                'bound_fingerprint' => $license->bound_fingerprint,
+                'enforcement_mode' => $license->enforcement_mode ?? 'standard',
+                'features' => is_array($license->features) ? $license->features : [],
                 'activation_limit' => $license->activation_limit ?? 1,
-                'current_usage' => $license->activations()->where('status', 'success')->count(),
+                // Distinct active domains (not raw activation rows). A bound domain
+                // with no recorded activations still occupies at least one seat.
+                'current_usage' => max(
+                    (int) $license->activations()
+                        ->where('status', 'success')
+                        ->whereNotNull('request_domain_normalized')
+                        ->distinct()
+                        ->count('request_domain_normalized'),
+                    $license->bound_domain ? 1 : 0
+                ),
                 'expires_at' => $license->expires_at ? $license->expires_at->format('Y-m-d') : 'Lifetime',
+                'last_check_at' => $license->last_check_at ? $license->last_check_at->toDateTimeString() : null,
             ],
-            'api_base_url' => url('/api/v1')
+            'api_base_url' => url('/api/v1'),
+            'public_key_url' => url('/api/v1/license/public-key'),
+            'offline_validity_days' => (int) config('license.offline_validity_days', 7),
+            'pulse_interval_days' => (int) config('license.pulse_interval_days', 30),
         ]);
     })->name('licenses.config');
 
     Route::post('/licenses/{id}/renew', function ($id, \Illuminate\Http\Request $request) {
         $license = \App\Models\License::where('user_id', auth()->id())->findOrFail($id);
-        
-        // Find the original price plan to renew
-        // We look at the original order item to find the product_price_id
-        $originalOrder = $license->order;
-        $originalItem = $originalOrder ? $originalOrder->items()->where('product_id', $license->product_id)->first() : null;
-        
+
+        // Terminal states can never be renewed, irrespective of the request payload.
+        if (in_array($license->status, ['suspended', 'revoked', 'cancelled'], true)) {
+            return back()->with('error', 'This license cannot be renewed while it is ' . $license->status . '. Please contact support.');
+        }
+
+        $gateway = $request->input('gateway');
+        if (! in_array($gateway, ['stripe', 'bkash', 'offline'], true)) {
+            return back()->with('error', 'Please choose a payment method to continue.');
+        }
+
+        // Resolve the price plan in priority order:
+        //   1. Explicit product_price_id chosen by the user (monthly vs yearly),
+        //      but only if it belongs to this license's product.
+        //   2. The price originally purchased on the source order item.
+        //   3. Any active subscription price for the product.
+        //   4. Any active full price for the product (guarantees we never dead-end).
         $price = null;
-        if ($originalItem && $originalItem->product_price_id) {
-            $price = \App\Models\ProductPrice::find($originalItem->product_price_id);
+
+        $requestedPriceId = $request->input('product_price_id');
+        if ($requestedPriceId) {
+            $price = \App\Models\ProductPrice::where('id', $requestedPriceId)
+                ->where('product_id', $license->product_id)
+                ->first();
         }
 
-        // Fallback: If no linked price, try to find a valid 'full' or 'subscription' price for the product
-        if (!$price) {
-             $price = \App\Models\ProductPrice::where('product_id', $license->product_id)
-                 ->where('type', $license->type === 'trial' ? 'subscription' : $license->type) // If trial, renew as sub? Or let them choose. Assuming sub/full match.
-                 ->first();
+        if (! $price) {
+            $originalOrder = $license->order;
+            $originalItem = $originalOrder
+                ? $originalOrder->items()->where('product_id', $license->product_id)->first()
+                : null;
+
+            if ($originalItem && $originalItem->product_price_id) {
+                $price = \App\Models\ProductPrice::where('id', $originalItem->product_price_id)
+                    ->where('product_id', $license->product_id)
+                    ->first();
+            }
         }
 
-        if (!$price) {
+        if (! $price) {
+            $price = \App\Models\ProductPrice::where('product_id', $license->product_id)
+                ->where('type', 'subscription')
+                ->first();
+        }
+
+        if (! $price) {
+            $price = \App\Models\ProductPrice::where('product_id', $license->product_id)
+                ->where('type', 'full')
+                ->first();
+        }
+
+        if (! $price) {
             return back()->with('error', 'Renewal price not found. Please purchase a new license from the store.');
         }
 
@@ -535,6 +643,8 @@ Route::middleware('auth')->group(function () {
             return back()->with('error', '100% discount renewal orders require explicit administrator approval.');
         }
 
+        $isOffline = $gateway === 'offline';
+
         // Create Renewal Order
         $order = \App\Models\Order::create([
             'order_number' => 'ORD-REN-' . strtoupper(\Illuminate\Support\Str::random(10)),
@@ -542,8 +652,8 @@ Route::middleware('auth')->group(function () {
             'license_id' => $license->id,
             'total_amount' => $computedTotal,
             'currency' => $price->currency,
-            'status' => 'awaiting_payment',
-            'payment_method' => 'online', // Auto-assume online for auto-redirect
+            'status' => $isOffline ? 'pending' : 'awaiting_payment',
+            'payment_method' => $isOffline ? 'offline' : 'online',
             'type' => 'renewal',
         ]);
 
@@ -555,19 +665,22 @@ Route::middleware('auth')->group(function () {
             'price' => $price->amount,
             'license_type' => $price->type,
         ]);
-        
-        // Initiate Payment
-        $gateway = $request->input('gateway', 'stripe');
 
         // Ensure a payment record exists so the callback can resolve + fulfill.
         $payment = \App\Models\Payment::create([
             'order_id' => $order->id,
             'license_id' => $license->id,
             'user_id' => auth()->id(),
-            'gateway' => $gateway,
+            'gateway' => $isOffline ? 'manual' : $gateway,
             'amount' => $computedTotal,
             'status' => 'pending',
         ]);
+
+        // Offline / manual: no hosted checkout. Park the order as pending and let
+        // the user submit a receipt for admin verification.
+        if ($isOffline) {
+            return back()->with('success', 'Renewal order created. Please upload your payment receipt from the Orders page for verification.');
+        }
 
         if ($gateway === 'bkash') {
             try {
@@ -582,15 +695,27 @@ Route::middleware('auth')->group(function () {
                 return \Inertia\Inertia::location($bkashResponse['bkashURL']);
             } catch (\Exception $e) {
                 \Illuminate\Support\Facades\Log::error('bKash Renewal Exception: ' . $e->getMessage());
-                return back()->with('error', 'Failed to initiate renewal payment: ' . $e->getMessage());
+                return back()->with('error', 'Failed to initiate renewal payment. Please try another payment method or contact support.');
             }
         }
 
-        $stripeService = new \App\Services\StripePaymentService();
-        $session = $stripeService->createCheckoutSession($order, $price);
+        // Stripe: guard against a missing/invalid key so the user gets a friendly
+        // message instead of an unhandled 500 from a failed API call.
+        if (empty(\App\Services\StripePaymentService::resolveSecret())) {
+            \Illuminate\Support\Facades\Log::error('Stripe renewal aborted: no Stripe secret configured in settings or services config.');
+            return back()->with('error', 'Card payments are currently unavailable. Please choose bKash or offline payment, or contact support.');
+        }
 
-        if ($session && $session->url) {
-            return \Inertia\Inertia::location($session->url);
+        try {
+            $stripeService = new \App\Services\StripePaymentService();
+            $session = $stripeService->createCheckoutSession($order, $price);
+
+            if ($session && $session->url) {
+                return \Inertia\Inertia::location($session->url);
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Stripe Renewal Exception: ' . $e->getMessage());
+            return back()->with('error', 'Unable to start the card payment session. Please choose another payment method or contact support.');
         }
 
         return back()->with('error', 'Failed to initiate renewal payment.');
@@ -599,12 +724,27 @@ Route::middleware('auth')->group(function () {
     Route::post('/licenses/{id}/upgrade', function ($id, \Illuminate\Http\Request $request) {
         $license = \App\Models\License::where('user_id', auth()->id())->findOrFail($id);
         $newPriceId = $request->input('product_price_id');
-        
+
         if (!$newPriceId) {
             return back()->with('error', 'Please select a plan to upgrade to.');
         }
 
-        $price = \App\Models\ProductPrice::findOrFail($newPriceId);
+        // The target plan must belong to this license's product, otherwise a user
+        // could pair a cheap price from another product with this license.
+        $price = \App\Models\ProductPrice::where('id', $newPriceId)
+            ->where('product_id', $license->product_id)
+            ->first();
+
+        if (!$price) {
+            return back()->with('error', 'That upgrade plan is not available for this license.');
+        }
+
+        $gateway = $request->input('gateway');
+        if (! in_array($gateway, ['stripe', 'bkash', 'offline'], true)) {
+            return back()->with('error', 'Please choose a payment method to continue.');
+        }
+
+        $isOffline = $gateway === 'offline';
 
         // Create Upgrade Order
         $order = \App\Models\Order::create([
@@ -613,8 +753,8 @@ Route::middleware('auth')->group(function () {
             'license_id' => $license->id,
             'total_amount' => $price->amount,
             'currency' => $price->currency,
-            'status' => 'awaiting_payment',
-            'payment_method' => 'online',
+            'status' => $isOffline ? 'pending' : 'awaiting_payment',
+            'payment_method' => $isOffline ? 'offline' : 'online',
             'type' => 'upgrade',
         ]);
 
@@ -626,23 +766,22 @@ Route::middleware('auth')->group(function () {
             'price' => $price->amount,
             'license_type' => $price->type,
         ]);
-        
-        // Associate license ID in some way? 
-        // We'll use the License ID in OrderFulfillmentService to find the one to upgrade
-        // For now, LicenseService::upgradeLicense finds the latest license for that product/user.
-
-        // Initiate Payment
-        $gateway = $request->input('gateway', 'stripe');
 
         // Ensure a payment record exists so the callback can resolve + fulfill.
         $payment = \App\Models\Payment::create([
             'order_id' => $order->id,
             'license_id' => $license->id,
             'user_id' => auth()->id(),
-            'gateway' => $gateway,
+            'gateway' => $isOffline ? 'manual' : $gateway,
             'amount' => $price->amount,
             'status' => 'pending',
         ]);
+
+        // Offline / manual: no hosted checkout. Park the order as pending and let
+        // the user submit a receipt for admin verification.
+        if ($isOffline) {
+            return back()->with('success', 'Upgrade order created. Please upload your payment receipt from the Orders page for verification.');
+        }
 
         if ($gateway === 'bkash') {
             try {
@@ -657,15 +796,27 @@ Route::middleware('auth')->group(function () {
                 return \Inertia\Inertia::location($bkashResponse['bkashURL']);
             } catch (\Exception $e) {
                 \Illuminate\Support\Facades\Log::error('bKash Upgrade Exception: ' . $e->getMessage());
-                return back()->with('error', 'Failed to initiate upgrade payment: ' . $e->getMessage());
+                return back()->with('error', 'Failed to initiate upgrade payment. Please try another payment method or contact support.');
             }
         }
 
-        $stripeService = new \App\Services\StripePaymentService();
-        $session = $stripeService->createCheckoutSession($order, $price);
+        // Stripe: guard against a missing/invalid key so the user gets a friendly
+        // message instead of an unhandled 500 from a failed API call.
+        if (empty(\App\Services\StripePaymentService::resolveSecret())) {
+            \Illuminate\Support\Facades\Log::error('Stripe upgrade aborted: no Stripe secret configured in settings or services config.');
+            return back()->with('error', 'Card payments are currently unavailable. Please choose bKash or offline payment, or contact support.');
+        }
 
-        if ($session && $session->url) {
-            return \Inertia\Inertia::location($session->url);
+        try {
+            $stripeService = new \App\Services\StripePaymentService();
+            $session = $stripeService->createCheckoutSession($order, $price);
+
+            if ($session && $session->url) {
+                return \Inertia\Inertia::location($session->url);
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Stripe Upgrade Exception: ' . $e->getMessage());
+            return back()->with('error', 'Unable to start the card payment session. Please choose another payment method or contact support.');
         }
 
         return back()->with('error', 'Failed to initiate upgrade payment.');
@@ -874,8 +1025,19 @@ Route::middleware('auth')->group(function () {
                     'enforcement_mode' => $license->enforcement_mode ?? 'active',
                     'bound_domain' => $license->bound_domain,
                     'bound_ip' => $license->bound_ip,
+                    'bound_fingerprint' => $license->bound_fingerprint,
                     'activation_limit' => $license->activation_limit ?? 1,
-                    'current_usage' => $license->activations()->where('status', 'success')->count(),
+                    // Count distinct active domains rather than raw activation rows,
+                    // so repeated pulses from one domain don't inflate usage.
+                    // A bound domain with no recorded activations still uses 1 seat.
+                    'current_usage' => max(
+                        (int) $license->activations()
+                            ->where('status', 'success')
+                            ->whereNotNull('request_domain_normalized')
+                            ->distinct()
+                            ->count('request_domain_normalized'),
+                        $license->bound_domain ? 1 : 0
+                    ),
                     'expires_at' => $license->expires_at ? $license->expires_at->format('Y-m-d') : 'Lifetime',
                     'last_check_at' => $license->last_check_at ? $license->last_check_at->toDateTimeString() : null,
                     'next_expected_heartbeat' => $license->last_check_at ? $license->last_check_at->copy()->addDays((int) config('license.pulse_interval_days', 30))->toDateTimeString() : null,
@@ -939,11 +1101,26 @@ Route::middleware('auth')->group(function () {
 
         Route::post('/licenses/{id}/reset-binding', function ($id) {
             $license = \App\Models\License::findOrFail($id);
+
             $license->update([
                 'bound_ip' => null,
-                'bound_domain' => null
+                'bound_domain' => null,
+                'bound_fingerprint' => null,
+                'activated_at' => null,
             ]);
-            return back()->with('success', 'License bindings reset successfully.');
+
+            // Mark previous successful activations as failed so they no longer
+            // count toward the activation limit and don't block reactivation.
+            $license->activations()
+                ->where('status', 'success')
+                ->update([
+                    'status' => 'failed',
+                    'failure_reason' => 'Binding reset by admin',
+                ]);
+
+            \App\Services\AuditService::log('license_binding_reset', $license);
+
+            return back()->with('success', 'License environment bindings reset successfully. The license can now be activated on a new domain.');
         })->name('admin.licenses.reset-binding');
 
         Route::get('/products', function () {
@@ -1014,27 +1191,94 @@ Route::middleware('auth')->group(function () {
                 return [$key => $value];
             });
 
+            if (! $maskedSettings->has('api_enabled')) {
+                $maskedSettings['api_enabled'] = 'true';
+            }
+            if (! $maskedSettings->has('min_supported_version')) {
+                $maskedSettings['min_supported_version'] = '1.0.0';
+            }
+
+            // RSA signing architecture metadata (algorithm, active key id, public key).
+            $signingMeta = \App\Support\OfflineLicenseVerification::buildPublicKeyMetadata();
+
             return Inertia::render('Admin/Settings', [
-                'currentSettings' => $maskedSettings
+                'currentSettings' => $maskedSettings,
+                'signing' => [
+                    'algorithm' => $signingMeta['algorithm'] ?? 'RSA-SHA256',
+                    'active_key_id' => $signingMeta['active_key_id'] ?? null,
+                    'public_key_configured' => ! empty($signingMeta['public_key']),
+                    'public_key_url' => url('/api/v1/license/public-key'),
+                ],
+                'runtime' => [
+                    'queue_driver' => (string) config('queue.default'),
+                    'session_driver' => (string) config('session.driver'),
+                    'cache_driver' => (string) config('cache.default'),
+                    'scheduler_command' => 'license:renew-subscriptions',
+                ],
+                'protocol' => [
+                    'offline_validity_days' => (int) config('license.offline_validity_days', 7),
+                    'pulse_interval_days' => (int) config('license.pulse_interval_days', 30),
+                ],
             ]);
         })->name('admin.settings');
 
         Route::post('/settings/save', function (\Illuminate\Http\Request $request) {
             $data = $request->all();
 
+            // Secret fields that must never be clobbered by the masked placeholder.
+            $secretKeys = ['gateway_stripe_key', 'gateway_stripe_secret', 'gateway_bkash_password', 'gateway_bkash_app_key', 'gateway_bkash_app_secret'];
+
             foreach ($data as $key => $value) {
                 if (in_array($key, ['_token', '_method'], true)) {
                     continue;
                 }
 
-                $normalizedValue = is_array($value) ? json_encode($value) : (string) $value;
+                $raw = is_array($value) ? json_encode($value) : (string) $value;
+
+                // Catastrophic-overwrite guard: the settings page renders secrets
+                // masked ('******') and sends them back on save. Never persist a
+                // mask/empty/placeholder over a real stored secret.
+                if (in_array($key, $secretKeys, true)) {
+                    $trimmed = trim($raw);
+                    if ($trimmed === '' || $trimmed === '******' || str_starts_with($trimmed, '***')) {
+                        continue; // keep existing value untouched
+                    }
+                }
+
+                // Store a clean ISO code for the base currency, not the long label.
+                if ($key === 'base_currency') {
+                    $raw = trim(explode('—', str_replace('---', '—', $raw))[0]);
+                }
 
                 \App\Models\SystemSetting::updateOrCreate(
                     ['key' => $key],
-                    ['value' => $normalizedValue]
+                    ['value' => $raw]
                 );
 
                 \Illuminate\Support\Facades\Cache::forget("setting:{$key}");
+            }
+
+            // Keep the exchange_rates table in sync with the scalar setting and
+            // flush the cached lookup so BDT conversion uses the fresh rate.
+            if ($request->filled('exchange_rate')) {
+                $rate = (float) $request->input('exchange_rate');
+
+                if ($rate > 0) {
+                    $baseCurrency = \App\Models\SystemSetting::getCached('base_currency', 'USD');
+
+                    // The exchange rate is expressed as units of base (USD) per 1 local unit,
+                    // so a displayed "USD/BDT" of 114.50 means rate_to_base = 1 / 114.50.
+                    $rateToBase = $baseCurrency === 'BDT' && $rate > 1 ? (1 / $rate) : $rate;
+                    $currency = $baseCurrency === 'BDT' ? 'BDT' : 'USD';
+
+                    \App\Models\ExchangeRate::updateOrCreate(
+                        ['currency' => 'BDT'],
+                        ['rate_to_base' => $rateToBase]
+                    );
+
+                    \Illuminate\Support\Facades\Cache::forget('exchange_rate_BDT');
+                    \Illuminate\Support\Facades\Cache::forget("exchange_rate_{$currency}");
+                }
             }
 
             return back()->with('success', 'Settings updated successfully.');

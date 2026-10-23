@@ -11,7 +11,7 @@ import TableHeaderCell from '@/Components/UI/TableHeaderCell.vue';
 import TableRow from '@/Components/UI/TableRow.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
-import { onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import axios from 'axios';
 import { Copy, LoaderCircle } from 'lucide-vue-next';
 
@@ -24,6 +24,10 @@ const props = defineProps({
     loading: {
         type: Boolean,
         default: false,
+    },
+    availableGateways: {
+        type: Array,
+        default: () => ['offline'],
     },
 });
 
@@ -64,16 +68,113 @@ const statusVariant = (status) => {
     return mapping[value] ?? 'default';
 };
 
+const upgradeGateway = ref('');
+
+const upgradeError = ref('');
+
+// Map ISO currency codes to a display symbol. Unknown codes fall back to the
+// code itself (e.g. 'BDT') rather than silently assuming '$'.
+const currencyLabel = (currency) => {
+    const code = String(currency || 'USD').toUpperCase();
+    return { USD: '$', BDT: '৳', EUR: '€', GBP: '£', INR: '₹' }[code] ?? code;
+};
+
+const formatMoney = (amount, currency) => `${currencyLabel(currency)} ${amount}`;
+
+const openUpgrade = (license) => {
+    upgradingLicense.value = license;
+    upgradeGateway.value = gatewayOptions.value[0]?.id ?? 'offline';
+    upgradeError.value = '';
+};
+
+const closeUpgrade = () => {
+    upgradingLicense.value = null;
+    upgradeGateway.value = '';
+    upgradeError.value = '';
+};
+
 const handleUpgrade = (license, priceId) => {
+    if (!upgradeGateway.value) {
+        upgradeError.value = 'Please choose a payment method to continue.';
+        return;
+    }
+
+    upgradeError.value = '';
     router.post(route('licenses.upgrade', license.id), {
         product_price_id: priceId,
+        gateway: upgradeGateway.value,
     });
 };
 
-const handleRenew = (license) => {
-    if (confirm('Proceed to renewal for ' + license.product_name + '?')) {
-        router.post(route('licenses.renew', license.id));
+const renewingLicense = ref(null);
+const selectedGateway = ref('');
+const selectedPlanId = ref('');
+const renewError = ref('');
+
+const GATEWAY_META = {
+    stripe: { label: 'Card (Stripe)', desc: 'Pay with a credit or debit card' },
+    bkash: { label: 'bKash', desc: 'Pay via bKash mobile wallet' },
+    offline: { label: 'Offline / Manual', desc: 'Bank transfer — verified by an admin' },
+};
+
+const gatewayOptions = computed(() => {
+    const list = props.availableGateways.filter((g) => GATEWAY_META[g]);
+    // Guarantee at least one usable option even if settings are missing.
+    return (list.length ? list : ['offline']).map((id) => ({
+        id,
+        ...GATEWAY_META[id],
+    }));
+});
+
+const openRenew = (license) => {
+    renewingLicense.value = license;
+    selectedPlanId.value = license.renew_plans?.[0]?.id ?? '';
+    renewError.value = '';
+
+    const gateways = gatewayOptions.value.map((g) => g.id);
+    // Prefer the gateway previously used for this license, otherwise the first available.
+    selectedGateway.value = gateways.includes(license.last_gateway)
+        ? license.last_gateway
+        : gateways[0];
+};
+
+const closeRenew = () => {
+    renewingLicense.value = null;
+    selectedGateway.value = '';
+    selectedPlanId.value = '';
+    renewError.value = '';
+};
+
+const selectedPlan = computed(() => {
+    const plans = renewingLicense.value?.renew_plans ?? [];
+    return plans.find((p) => p.id === selectedPlanId.value) ?? plans[0] ?? null;
+});
+
+const submittingRenewal = ref(false);
+
+const submitRenewal = () => {
+    if (!renewingLicense.value || !selectedGateway.value) {
+        renewError.value = 'Please choose a payment method.';
+        return;
     }
+
+    if (!selectedPlanId.value) {
+        renewError.value = 'No renewal plan is available for this license. Please contact support.';
+        return;
+    }
+
+    submittingRenewal.value = true;
+    renewError.value = '';
+
+    router.post(route('licenses.renew', renewingLicense.value.id), {
+        gateway: selectedGateway.value,
+        product_price_id: selectedPlanId.value,
+    }, {
+        preserveScroll: true,
+        onFinish: () => {
+            submittingRenewal.value = false;
+        },
+    });
 };
 
 const openConfig = (license) => {
@@ -114,6 +215,16 @@ onUnmounted(() => {
 
         <Alert v-if="keyMessage" :variant="keyMessageIsError ? 'danger' : 'success'" class="mb-6">
             {{ keyMessage }}
+        </Alert>
+
+        <Alert v-if="$page.props.flash?.error" variant="danger" class="mb-6">
+            {{ $page.props.flash.error }}
+        </Alert>
+        <Alert v-else-if="$page.props.flash?.success" variant="success" class="mb-6">
+            {{ $page.props.flash.success }}
+        </Alert>
+        <Alert v-else-if="$page.props.flash?.info" variant="default" class="mb-6">
+            {{ $page.props.flash.info }}
         </Alert>
 
         <Card class="overflow-hidden p-0">
@@ -186,8 +297,8 @@ onUnmounted(() => {
                             <TableCell class="text-right">
                                 <div class="flex items-center justify-end gap-2">
                                     <Button type="button" variant="secondary" @click="openConfig(license)">Config</Button>
-                                    <Button v-if="license.upgrade_plans && license.upgrade_plans.length > 0" type="button" variant="primary" @click="upgradingLicense = license">Upgrade</Button>
-                                    <Button v-if="license.can_renew" type="button" variant="secondary" @click="handleRenew(license)">Renew</Button>
+                                    <Button v-if="license.upgrade_plans && license.upgrade_plans.length > 0" type="button" variant="primary" @click="openUpgrade(license)">Upgrade</Button>
+                                    <Button v-if="license.can_renew" type="button" variant="secondary" @click="openRenew(license)">Renew</Button>
                                 </div>
                             </TableCell>
                         </TableRow>
@@ -196,24 +307,140 @@ onUnmounted(() => {
             </div>
         </Card>
 
-        <Modal :show="!!upgradingLicense" @close="upgradingLicense = null">
+        <Modal :show="!!upgradingLicense" @close="closeUpgrade">
             <div class="p-8">
-                <h3 class="mb-6 text-2xl font-black text-text-primary">Upgrade your license</h3>
-                <div class="space-y-4">
-                    <div v-for="plan in upgradingLicense?.upgrade_plans" :key="plan.id" class="flex items-center justify-between rounded-[24px] border border-panel-line bg-panel-2 p-6">
-                        <div>
-                            <div class="font-black text-text-primary">{{ plan.name }}</div>
-                            <div class="mt-1 text-xs font-black uppercase tracking-[0.2em] text-text-muted">{{ plan.type }} edition</div>
-                        </div>
-                        <div class="flex items-center gap-6">
-                            <div class="text-xl font-black text-text-primary">${{ plan.amount }}</div>
-                            <Button type="button" variant="primary" @click="handleUpgrade(upgradingLicense, plan.id)">Select</Button>
+                <h3 class="text-2xl font-black text-text-primary">Upgrade your license</h3>
+                <p class="mt-2 text-sm text-text-muted">
+                    Choose a plan and a payment method for
+                    <span class="font-medium text-text-primary">{{ upgradingLicense?.product_name }}</span>.
+                </p>
+
+                <div v-if="upgradeError" class="mt-5">
+                    <Alert variant="danger">{{ upgradeError }}</Alert>
+                </div>
+
+                <div class="mt-6">
+                    <p class="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Upgrade plan</p>
+                    <div class="space-y-4">
+                        <div v-for="plan in upgradingLicense?.upgrade_plans" :key="plan.id" class="flex items-center justify-between rounded-[24px] border border-panel-line bg-panel-2 p-6">
+                            <div>
+                                <div class="font-black text-text-primary">{{ plan.name }}</div>
+                                <div class="mt-1 text-xs font-black uppercase tracking-[0.2em] text-text-muted">{{ plan.type }} edition</div>
+                            </div>
+                            <div class="flex items-center gap-6">
+                                <div class="text-xl font-black text-text-primary">{{ formatMoney(plan.amount, plan.currency) }}</div>
+                                <Button type="button" variant="primary" :disabled="!upgradeGateway" @click="handleUpgrade(upgradingLicense, plan.id)">Select</Button>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="mt-8 flex justify-end">
-                    <Button type="button" variant="secondary" @click="upgradingLicense = null">Cancel</Button>
+
+                <!-- Payment gateway selection -->
+                <div class="mt-6">
+                    <p class="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Payment method</p>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <button
+                            v-for="option in gatewayOptions"
+                            :key="option.id"
+                            type="button"
+                            class="rounded-[24px] border p-5 text-left transition-colors"
+                            :class="upgradeGateway === option.id ? 'border-amber bg-amber/10' : 'border-panel-line bg-panel-2 hover:border-amber/40'"
+                            @click="upgradeGateway = option.id"
+                        >
+                            <div class="font-black text-text-primary">{{ option.label }}</div>
+                            <div class="mt-1 text-xs text-text-muted">{{ option.desc }}</div>
+                        </button>
+                    </div>
                 </div>
+
+                <div class="mt-8 flex justify-end">
+                    <Button type="button" variant="secondary" @click="closeUpgrade">Cancel</Button>
+                </div>
+            </div>
+        </Modal>
+
+        <Modal :show="!!renewingLicense" @close="closeRenew">
+            <div class="p-8">
+                <h3 class="text-2xl font-black text-text-primary">Renew license</h3>
+                <p class="mt-2 text-sm text-text-muted">
+                    Choose a plan and a payment method for
+                    <span class="font-medium text-text-primary">{{ renewingLicense?.product_name }}</span>.
+                </p>
+
+                <div v-if="renewError" class="mt-5">
+                    <Alert variant="danger">{{ renewError }}</Alert>
+                </div>
+
+                <!-- Renewal plan (monthly / yearly / custom duration) -->
+                <div class="mt-6">
+                    <p class="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Renewal plan</p>
+
+                    <div v-if="(renewingLicense?.renew_plans?.length ?? 0) === 0" class="rounded-[24px] border border-panel-line bg-panel-2 p-6 text-sm text-text-muted">
+                        No renewal plan is configured for this product. Please contact support.
+                    </div>
+
+                    <div v-else class="space-y-3">
+                        <button
+                            v-for="plan in renewingLicense?.renew_plans"
+                            :key="plan.id"
+                            type="button"
+                            class="flex w-full items-center justify-between rounded-[24px] border p-5 text-left transition-colors"
+                            :class="selectedPlanId === plan.id ? 'border-amber bg-amber/10' : 'border-panel-line bg-panel-2 hover:border-amber/40'"
+                            @click="selectedPlanId = plan.id"
+                        >
+                            <div>
+                                <div class="font-black text-text-primary">{{ plan.name }}</div>
+                                <div class="mt-1 text-xs font-black uppercase tracking-[0.2em] text-text-muted">
+                                    {{ plan.type }} edition
+                                    <span v-if="plan.billing_period"> · {{ plan.billing_period }} days</span>
+                                </div>
+                            </div>
+                            <div class="text-xl font-black text-text-primary">
+                                {{ formatMoney(plan.amount, plan.currency) }}
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Payment gateway selection -->
+                <div class="mt-6">
+                    <p class="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">Payment method</p>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <button
+                            v-for="option in gatewayOptions"
+                            :key="option.id"
+                            type="button"
+                            class="rounded-[24px] border p-5 text-left transition-colors"
+                            :class="selectedGateway === option.id ? 'border-amber bg-amber/10' : 'border-panel-line bg-panel-2 hover:border-amber/40'"
+                            @click="selectedGateway = option.id"
+                        >
+                            <div class="font-black text-text-primary">{{ option.label }}</div>
+                            <div class="mt-1 text-xs text-text-muted">{{ option.desc }}</div>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex justify-end gap-3">
+                    <Button type="button" variant="secondary" @click="closeRenew">Cancel</Button>
+                    <Button
+                        type="button"
+                        variant="primary"
+                        :disabled="submittingRenewal || (renewingLicense?.renew_plans?.length ?? 0) === 0"
+                        @click="submitRenewal"
+                    >
+                        <template #icon-after>
+                            <LoaderCircle v-if="submittingRenewal" class="h-4 w-4 animate-spin" />
+                        </template>
+                        Continue to payment
+                    </Button>
+                </div>
+
+                <p class="mt-4 text-[11px] text-text-muted">
+                    Total:
+                    <span class="font-black text-text-primary">
+                        {{ selectedPlan ? formatMoney(selectedPlan.amount, selectedPlan.currency) : '—' }}
+                    </span>
+                </p>
             </div>
         </Modal>
     </AuthenticatedLayout>

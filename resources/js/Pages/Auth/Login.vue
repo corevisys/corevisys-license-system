@@ -8,7 +8,7 @@ import TerminalBlock from '@/Components/UI/TerminalBlock.vue';
 import Checkbox from '@/Components/Checkbox.vue';
 import InputError from '@/Components/InputError.vue';
 import { useTheme } from '@/Composables/useTheme';
-import { ArrowRight, Fingerprint, KeyRound, ShieldCheck, Sparkles, TerminalSquare } from 'lucide-vue-next';
+import { ArrowRight, Eye, EyeOff, Fingerprint, KeyRound, ShieldCheck, Sparkles, TerminalSquare } from 'lucide-vue-next';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { computed, onBeforeMount, ref } from 'vue';
 
@@ -34,32 +34,49 @@ const touched = ref({
 
 const submitMessage = ref('');
 
+// '', 'success', 'error' — drives the alert variant independently of message text.
+const submitStatus = ref('');
+
+const showPassword = ref(false);
+
 const form = useForm({
     email: '',
     password: '',
     remember: false,
 });
 
-const emailError = computed(() => {
-    if (form.errors.email) {
-        return form.errors.email;
-    }
-
-    if (!touched.value.email) {
-        return '';
-    }
-
+// Client-side (format/presence) validation only. These never block submission
+// because of a previous server-side error — they are evaluated fresh each time.
+const emailClientError = computed(() => {
     if (!form.email.trim()) {
         return 'Email is required.';
     }
 
-    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
-
-    if (!isValidEmail) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
         return 'Enter a valid email address.';
     }
 
     return '';
+});
+
+// A login field only requires a non-empty password. Complexity/length rules
+// belong to registration and password-reset flows, not to signing in.
+const passwordClientError = computed(() => {
+    if (!form.password) {
+        return 'Password is required.';
+    }
+
+    return '';
+});
+
+const emailError = computed(() => {
+    // Server-side errors (invalid credentials, lockout, suspended account) take
+    // precedence so they remain visible until the user edits the field.
+    if (form.errors.email) {
+        return form.errors.email;
+    }
+
+    return touched.value.email ? emailClientError.value : '';
 });
 
 const passwordError = computed(() => {
@@ -67,49 +84,65 @@ const passwordError = computed(() => {
         return form.errors.password;
     }
 
-    if (!touched.value.password) {
-        return '';
-    }
-
-    if (!form.password) {
-        return 'Password is required.';
-    }
-
-    if (form.password.length < 8) {
-        return 'Password must be at least 8 characters.';
-    }
-
-    return '';
+    return touched.value.password ? passwordClientError.value : '';
 });
 
 const alertVariant = computed(() => {
     if (props.status) return 'success';
-    if (!submitMessage.value) return 'default';
-    return submitMessage.value.includes('Invalid') || submitMessage.value.includes('Please correct') ? 'danger' : 'default';
+    if (submitStatus.value === 'error') return 'danger';
+    if (submitStatus.value === 'success') return 'success';
+    return 'default';
 });
 
 const validateField = (field) => {
     touched.value[field] = true;
 };
 
+// Clear the stale server-side error for the field being edited (and any previous
+// submit banner) so the form is never deadlocked by an old validation response.
+const clearFieldErrors = (field) => {
+    if (form.errors[field]) {
+        form.clearErrors(field);
+    }
+
+    if (submitMessage.value) {
+        submitMessage.value = '';
+        submitStatus.value = '';
+    }
+};
+
+const togglePassword = () => {
+    showPassword.value = !showPassword.value;
+};
+
 const submit = () => {
     touched.value.email = true;
     touched.value.password = true;
 
-    if (emailError.value || passwordError.value) {
+    // Only client-side presence/format validation may block submission.
+    // Previous server-side errors are intentionally ignored here.
+    if (emailClientError.value || passwordClientError.value) {
         submitMessage.value = 'Please correct the highlighted fields and try again.';
+        submitStatus.value = 'error';
         return;
     }
 
     submitMessage.value = 'Authenticating your session...';
+    submitStatus.value = '';
 
     form.post(route('login'), {
         preserveScroll: true,
         onSuccess: () => {
             submitMessage.value = 'Signed in successfully. Redirecting...';
+            submitStatus.value = 'success';
         },
         onError: () => {
-            submitMessage.value = 'Invalid credentials. Please check your email and password.';
+            // Surface the actual backend message so rate-limit (throttle) and
+            // suspended-account responses are shown instead of a hardcoded string.
+            submitMessage.value = form.errors.email
+                || form.errors.password
+                || 'Invalid credentials. Please check your email and password.';
+            submitStatus.value = 'error';
         },
         onFinish: () => form.reset('password'),
     });
@@ -229,6 +262,7 @@ const submit = () => {
                                     :class="emailError ? 'border-danger/50 bg-danger/5 focus:ring-danger/20' : ''"
                                     :aria-invalid="!!emailError"
                                     :aria-describedby="emailError ? 'email-error' : undefined"
+                                    @input="clearFieldErrors('email')"
                                     @blur="validateField('email')"
                                 />
 
@@ -247,16 +281,31 @@ const submit = () => {
                                     </Link>
                                 </div>
 
-                                <TextInput
-                                    id="password"
-                                    v-model="form.password"
-                                    type="password"
-                                    autocomplete="current-password"
-                                    :class="passwordError ? 'border-danger/50 bg-danger/5 focus:ring-danger/20' : ''"
-                                    :aria-invalid="!!passwordError"
-                                    :aria-describedby="passwordError ? 'password-error' : undefined"
-                                    @blur="validateField('password')"
-                                />
+                                <div class="relative">
+                                    <TextInput
+                                        id="password"
+                                        v-model="form.password"
+                                        :type="showPassword ? 'text' : 'password'"
+                                        autocomplete="current-password"
+                                        class="!pr-11"
+                                        :class="passwordError ? 'border-danger/50 bg-danger/5 focus:ring-danger/20' : ''"
+                                        :aria-invalid="!!passwordError"
+                                        :aria-describedby="passwordError ? 'password-error' : undefined"
+                                        @input="clearFieldErrors('password')"
+                                        @blur="validateField('password')"
+                                    />
+
+                                    <button
+                                        type="button"
+                                        class="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-lg text-text-muted transition-colors hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-amber/40"
+                                        :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                                        :aria-pressed="showPassword"
+                                        @click="togglePassword"
+                                    >
+                                        <EyeOff v-if="showPassword" class="h-4 w-4" />
+                                        <Eye v-else class="h-4 w-4" />
+                                    </button>
+                                </div>
 
                                 <InputError id="password-error" class="mt-2" :message="passwordError" />
                             </div>
@@ -284,12 +333,27 @@ const submit = () => {
                             <div class="h-px flex-1 bg-panel-line" />
                         </div>
 
-                        <Button type="button" variant="secondary" class="mt-5 w-full justify-center">
-                            <template #icon-before>
-                                <Fingerprint class="h-4 w-4" />
-                            </template>
-                            Workspace SSO
-                        </Button>
+                        <div class="group relative mt-5">
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                class="w-full justify-center opacity-60"
+                                disabled
+                                aria-disabled="true"
+                                title="Workspace SSO is coming soon"
+                            >
+                                <template #icon-before>
+                                    <Fingerprint class="h-4 w-4" />
+                                </template>
+                                Workspace SSO
+                            </Button>
+
+                            <span
+                                class="pointer-events-none absolute -top-2 right-3 rounded-full border border-panel-line bg-panel px-2 py-[2px] text-[9px] font-black uppercase tracking-[0.18em] text-amber opacity-0 transition-opacity group-hover:opacity-100"
+                            >
+                                Coming soon
+                            </span>
+                        </div>
                     </div>
                 </section>
             </div>

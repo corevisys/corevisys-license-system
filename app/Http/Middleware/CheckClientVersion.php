@@ -16,9 +16,9 @@ class CheckClientVersion
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // 1. Check Kill Switch
+        // 1. Check Kill Switch. Accept both 'false' (legacy) and '0' (toggle) as disabled.
         $apiEnabled = SystemSetting::getCached('api_enabled');
-        if ($apiEnabled === 'false') {
+        if ($apiEnabled === 'false' || $apiEnabled === '0') {
             return response()->json(['message' => 'Service Unavailable', 'status' => false], 503);
         }
 

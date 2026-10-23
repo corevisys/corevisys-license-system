@@ -44,6 +44,13 @@ class HandleInertiaRequests extends Middleware
             'settings' => [
                 'default_theme' => $defaultTheme,
             ],
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
+                'info' => fn () => $request->session()->get('info'),
+                'new_license_key' => fn () => $request->session()->get('new_license_key'),
+                'new_api_token' => fn () => $request->session()->get('new_api_token'),
+            ],
         ];
     }
 }

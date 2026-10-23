@@ -76,11 +76,12 @@ class LicenseService
         }
 
         // 2. Calculate New Expiry
-        // Get billing period from the current order items
+        // Get billing period from the current order items. The related plan is
+        // exposed as `productPrice` (not `price`, which is the decimal amount column).
         $orderItem = $order->items()->where('product_id', $product->id)->first();
         $billingPeriod = 30; // Default
-        if ($orderItem && $orderItem->price) {
-             $billingPeriod = $orderItem->price->billing_period ?? 30;
+        if ($orderItem && $orderItem->productPrice) {
+             $billingPeriod = $orderItem->productPrice->billing_period ?? 30;
         }
 
         // If currently valid, add to expires_at. If expired, start from now.
@@ -122,25 +123,24 @@ class LicenseService
             return $this->createLicense($order, $product, $newType);
         }
 
-        // Calculate New Expiry for Upgrade
-        $billingPeriod = 30; // Default
-        if ($orderItem && $orderItem->price) {
-             $billingPeriod = $orderItem->price->billing_period ?? 30;
-        }
+        // Billing period from the target plan. `productPrice` avoids the collision
+        // with the `price` decimal column on OrderItem.
+        $billingPeriod = (int) ($orderItem?->productPrice->billing_period ?? 30);
 
-        // Upgrades typically start a fresh period from Now
-        $newExpiry = \Carbon\Carbon::now()->addDays($billingPeriod);
-        if ($newType === 'full' || $newType === 'lifetime') {
-            $newExpiry = null; // Lifetime
-        }
+        // Upgrades start a fresh period from now (subscriptions) or become lifetime (full).
+        $isLifetime = in_array($newType, ['full', 'lifetime'], true);
+        $newExpiry = $isLifetime ? null : \Carbon\Carbon::now()->addDays($billingPeriod);
 
         $license->update([
             'type' => $newType,
             'status' => 'active',
             'expires_at' => $newExpiry,
+            'auto_renew' => ! $isLifetime,
+            'next_billing_at' => $isLifetime ? null : $newExpiry,
+            'grace_expires_at' => null,
             'last_check_at' => now(),
         ]);
-        
+
         return $license;
     }
 
@@ -192,8 +192,8 @@ class LicenseService
             
             // Check if there is a specific trial price configured in the order
             $orderItem = $order->items()->where('product_id', $product->id)->first();
-            if ($orderItem && $orderItem->price && $orderItem->price->type === 'trial') {
-                $billingPeriod = $orderItem->price->billing_period ?? 180;
+            if ($orderItem && $orderItem->productPrice && $orderItem->productPrice->type === 'trial') {
+                $billingPeriod = $orderItem->productPrice->billing_period ?? 180;
             }
 
             $expiresAt = Carbon::now()->addDays($billingPeriod);
@@ -202,8 +202,8 @@ class LicenseService
             $orderItem = $order->items()->where('product_id', $product->id)->first();
             
             $billingPeriod = 30; // Default Monthly
-            if ($orderItem && $orderItem->price) {
-                 $billingPeriod = $orderItem->price->billing_period ?? 30;
+            if ($orderItem && $orderItem->productPrice) {
+                 $billingPeriod = $orderItem->productPrice->billing_period ?? 30;
             }
             
             $expiresAt = Carbon::now()->addDays($billingPeriod);
@@ -862,9 +862,12 @@ class LicenseService
                 return false;
             }
 
-            // Only active licenses or licenses within an active grace window may be renewed
+            // Only active, expired, or grace-window licenses may be renewed.
+            // Expired subscriptions are renewable when a verified payment qualifies,
+            // so they are allowed through to the payment qualification step below.
             $isGraceActive = $lockedLicense->grace_expires_at && $lockedLicense->grace_expires_at->isFuture();
-            if ($lockedLicense->status !== 'active' && !$isGraceActive) {
+            $isRenewableStatus = in_array($lockedLicense->status, ['active', 'expired'], true) || $isGraceActive;
+            if (! $isRenewableStatus) {
                 \App\Services\AuditService::log('license_renewal_blocked_disallowed_status', $lockedLicense, [
                     'current_status' => $lockedLicense->status,
                 ]);

@@ -18,9 +18,20 @@ class BKashPaymentService
 
     public function __construct()
     {
-        $this->appKey = (string) config('services.bkash.app_key', '');
-        $this->appSecret = (string) config('services.bkash.app_secret', '');
+        $this->appKey = $this->resolveCredential('gateway_bkash_app_key', 'services.bkash.app_key');
+        $this->appSecret = $this->resolveCredential('gateway_bkash_app_secret', 'services.bkash.app_secret');
         $this->baseUrl = $this->resolveBaseUrl();
+    }
+
+    /**
+     * Resolve a bKash credential, preferring the admin-managed SystemSetting
+     * value and falling back to the environment-based services config.
+     */
+    protected function resolveCredential(string $settingKey, string $configKey): string
+    {
+        $setting = (string) SystemSetting::getCached($settingKey, '');
+
+        return $setting !== '' ? $setting : (string) config($configKey, '');
     }
 
     public function isEnabled(): bool

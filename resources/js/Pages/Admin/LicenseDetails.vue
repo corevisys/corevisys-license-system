@@ -1,4 +1,5 @@
 <script setup>
+import Alert from '@/Components/UI/Alert.vue';
 import Badge from '@/Components/UI/Badge.vue';
 import Button from '@/Components/UI/Button.vue';
 import Card from '@/Components/UI/Card.vue';
@@ -73,6 +74,20 @@ const getStatusColor = (status) => {
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
             </Link>
             <h2 class="text-xl font-black uppercase tracking-[0.2em] text-text-primary">License <span class="text-teal">details</span></h2>
+        </div>
+
+        <div v-if="page.props.flash?.success" class="mb-8">
+            <Alert variant="success" class="items-center font-bold">
+                <svg class="h-5 w-5 shrink-0 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                <span>{{ page.props.flash.success }}</span>
+            </Alert>
+        </div>
+
+        <div v-if="page.props.flash?.error" class="mb-8">
+            <Alert variant="danger" class="items-center font-bold">
+                <svg class="h-5 w-5 shrink-0 text-danger" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                <span>{{ page.props.flash.error }}</span>
+            </Alert>
         </div>
 
         <div class="grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -164,10 +179,10 @@ const getStatusColor = (status) => {
                             <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                         </button>
 
-                        <button v-if="license.bound_domain || license.bound_ip" @click="resetBinding" class="flex items-center justify-between rounded-2xl border border-panel-line bg-panel-2 p-4 text-left text-text-secondary transition hover:border-amber hover:text-amber">
+                        <button v-if="license.bound_domain || license.bound_ip || license.bound_fingerprint" @click="resetBinding" class="flex items-center justify-between rounded-2xl border border-panel-line bg-panel-2 p-4 text-left text-text-secondary transition hover:border-amber hover:text-amber">
                             <div>
                                 <div class="text-xs font-black uppercase tracking-[0.2em]">Reset bindings</div>
-                                <div class="mt-1 text-[10px] text-text-muted">Clear domain/IP and allow new activation</div>
+                                <div class="mt-1 text-[10px] text-text-muted">Clear domain/IP/fingerprint and allow new activation</div>
                             </div>
                             <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                         </button>
@@ -207,11 +222,16 @@ const getStatusColor = (status) => {
                             <p class="font-mono text-sm text-text-primary">{{ license.bound_ip || 'NOT BOUND' }}</p>
                         </div>
                         <div class="rounded-2xl border border-panel-line bg-panel-2 p-4">
+                            <label class="mb-1 block text-[9px] font-black uppercase tracking-[0.2em] text-text-muted">Bound fingerprint</label>
+                            <p v-if="license.bound_fingerprint" class="font-mono text-xs text-text-primary break-all">{{ license.bound_fingerprint }}</p>
+                            <p v-else class="font-mono text-sm text-text-muted">NOT BOUND (ANY)</p>
+                        </div>
+                        <div class="rounded-2xl border border-panel-line bg-panel-2 p-4">
                             <label class="mb-1 block text-[9px] font-black uppercase tracking-[0.2em] text-text-muted">Activation limit</label>
                             <div class="flex items-center justify-between gap-4">
                                 <p class="text-sm font-black text-text-primary">{{ license.current_usage }} / {{ license.activation_limit }}</p>
                                 <div class="ml-4 h-1 flex-1 overflow-hidden rounded-full bg-panel-line">
-                                    <div class="h-full bg-teal transition-all duration-1000" :style="{ width: (license.activation_limit > 0 ? (license.current_usage / license.activation_limit * 100) : 0) + '%' }"></div>
+                                    <div class="h-full bg-teal transition-all duration-1000" :style="{ width: Math.min(100, (license.activation_limit > 0 ? (license.current_usage / license.activation_limit * 100) : 0)) + '%' }"></div>
                                 </div>
                             </div>
                         </div>

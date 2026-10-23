@@ -31,6 +31,20 @@ test('users can not authenticate with invalid password', function () {
     $this->assertGuest();
 });
 
+test('banned users can not authenticate even with valid credentials', function () {
+    $user = User::factory()->create(['status' => 'banned']);
+
+    $response = $this->post('/login', [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $this->assertGuest();
+    $response->assertSessionHasErrors([
+        'email' => 'Your account has been suspended. Please contact support.',
+    ]);
+});
+
 test('users can logout', function () {
     $user = User::factory()->create();
 

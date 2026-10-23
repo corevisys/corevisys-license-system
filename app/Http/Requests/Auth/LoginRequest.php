@@ -49,6 +49,19 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        $user = Auth::user();
+
+        // Reject authentication for any account that is not active. Credentials
+        // were valid at this point, so it is safe to surface a specific message
+        // instead of the generic "invalid credentials" response.
+        if ($user && $user->status !== 'active') {
+            Auth::guard('web')->logout();
+
+            throw ValidationException::withMessages([
+                'email' => 'Your account has been suspended. Please contact support.',
+            ]);
+        }
+
         RateLimiter::clear($this->throttleKey());
     }
 
