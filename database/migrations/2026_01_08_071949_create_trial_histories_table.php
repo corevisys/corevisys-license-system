@@ -14,9 +14,9 @@ return new class extends Migration {
             $table->id();
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignUuid('license_id')->nullable()->constrained('licenses')->nullOnDelete();
-            $table->string('fingerprint_hash')->nullable()->index();
-            $table->string('email_hash')->nullable()->index();
-            $table->string('ip_hash')->nullable()->index();
+            $table->string('fingerprint_hash', 64)->nullable()->index();
+            $table->string('email_hash', 64)->nullable()->index();
+            $table->string('ip_hash', 64)->nullable()->index();
             $table->timestamp('expires_at');
             $table->timestamps();
         });

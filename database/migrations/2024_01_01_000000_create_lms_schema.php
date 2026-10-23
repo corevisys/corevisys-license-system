@@ -74,13 +74,13 @@ return new class extends Migration {
             $table->foreignId('user_id')->constrained();
             $table->foreignId('product_id')->constrained();
             $table->foreignId('order_id')->constrained();
-            $table->string('license_key', 500)->unique(); // Encrypted/Hashed
+            $table->string('license_key', 191)->unique(); // Encrypted/Hashed
 
             $table->enum('status', ['active', 'inactive', 'expired', 'suspended', 'revoked'])->default('active');
             $table->enum('type', ['trial', 'full', 'subscription']);
 
             // Binding
-            $table->string('bound_domain')->nullable()->index();
+            $table->string('bound_domain', 150)->nullable()->index();
             $table->string('bound_ip', 45)->nullable();
 
             $table->timestamp('activated_at')->nullable();
@@ -95,7 +95,7 @@ return new class extends Migration {
             $table->id();
             $table->foreignUuid('license_id')->constrained('licenses');
             $table->string('request_ip', 45)->nullable();
-            $table->string('request_domain')->nullable();
+            $table->string('request_domain', 150)->nullable();
             $table->enum('status', ['success', 'failed']);
             $table->string('failure_reason')->nullable();
             $table->timestamps();
@@ -103,20 +103,20 @@ return new class extends Migration {
 
         // 8. Jobs/Queues/Cache (Framework basics required for operations)
         Schema::create('cache', function (Blueprint $table) {
-            $table->string('key')->primary();
+            $table->string('key', 191)->primary();
             $table->mediumText('value');
             $table->integer('expiration');
         });
 
         Schema::create('cache_locks', function (Blueprint $table) {
-            $table->string('key')->primary();
-            $table->string('owner');
+            $table->string('key', 191)->primary();
+            $table->string('owner', 191);
             $table->integer('expiration');
         });
 
         Schema::create('jobs', function (Blueprint $table) {
             $table->id();
-            $table->string('queue')->index();
+            $table->string('queue', 191)->index();
             $table->longText('payload');
             $table->unsignedTinyInteger('attempts');
             $table->unsignedInteger('reserved_at')->nullable();
@@ -125,7 +125,7 @@ return new class extends Migration {
         });
 
         Schema::create('job_batches', function (Blueprint $table) {
-            $table->string('id')->primary();
+            $table->string('id', 191)->primary();
             $table->string('name');
             $table->integer('total_jobs');
             $table->integer('pending_jobs');
@@ -139,7 +139,7 @@ return new class extends Migration {
 
         Schema::create('failed_jobs', function (Blueprint $table) {
             $table->id();
-            $table->string('uuid')->unique();
+            $table->string('uuid', 191)->unique();
             $table->text('connection');
             $table->text('queue');
             $table->longText('payload');

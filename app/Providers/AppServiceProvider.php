@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Gate;
@@ -27,6 +28,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Set MySQL/MariaDB default string length for utf8mb4 compatibility (prevents 1071 key too long error)
+        Schema::defaultStringLength(191);
+
         // Prohibit destructive database commands (migrate:fresh, migrate:refresh, migrate:reset, db:wipe) in production
         DB::prohibitDestructiveCommands($this->app->isProduction());
 

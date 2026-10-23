@@ -12,8 +12,8 @@ return new class extends Migration {
     {
         Schema::create('processed_webhooks', function (Blueprint $table) {
             $table->id();
-            $table->string('gateway');
-            $table->string('event_id');
+            $table->string('gateway', 50);
+            $table->string('event_id', 100);
             $table->longText('payload')->nullable();
             $table->timestamp('processed_at')->useCurrent();
 

@@ -225,12 +225,14 @@ class InstallationService
         Config::set('database.connections.mysql.database', $data['db_database'] ?? 'corevisys_license');
         Config::set('database.connections.mysql.username', $data['db_username'] ?? 'corevisys_user');
         Config::set('database.connections.mysql.password', $data['db_password'] ?? '');
+        Config::set('database.connections.mysql.engine', 'InnoDB');
 
         DB::purge('mysql');
     }
 
     public function runMigrations(): void
     {
+        \Illuminate\Support\Facades\Schema::defaultStringLength(191);
         $exitCode = Artisan::call('migrate', ['--force' => true]);
         if ($exitCode !== 0) {
             $output = Artisan::output();

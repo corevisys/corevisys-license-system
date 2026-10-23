@@ -33,7 +33,7 @@ return new class extends Migration {
         // 1. Add the stored normalized request-domain column.
         if (!Schema::hasColumn('license_activations', 'request_domain_normalized')) {
             Schema::table('license_activations', function (Blueprint $table) {
-                $table->string('request_domain_normalized')->nullable()->after('request_domain');
+                $table->string('request_domain_normalized', 150)->nullable()->after('request_domain');
             });
         }
 

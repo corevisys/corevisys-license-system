@@ -11,7 +11,7 @@ return new class extends Migration {
     public function up(): void
     {
         Schema::table('payments', function (Blueprint $table) {
-            $table->string('receipt_hash')->nullable()->unique()->after('payment_proof_path');
+            $table->string('receipt_hash', 64)->nullable()->unique()->after('payment_proof_path');
         });
     }
 
