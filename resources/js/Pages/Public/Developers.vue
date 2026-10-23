@@ -11,6 +11,8 @@ import Badge from '@/Components/UI/Badge.vue';
 import {
     activationExample,
     apiEndpoints,
+    checkExample,
+    deactivateExample,
     developerNotes,
     enforcementModes,
     offlineExample,
@@ -24,6 +26,8 @@ const methodStatus = (method) => (method === 'GET' ? 'success' : 'amber');
 const toc = [
     { id: 'endpoints', label: 'API reference' },
     { id: 'activation', label: 'Activation' },
+    { id: 'check', label: 'Check' },
+    { id: 'deactivate', label: 'Deactivate' },
     { id: 'offline', label: 'Offline verification' },
     { id: 'enforcement', label: 'Enforcement modes' },
     { id: 'notes', label: 'Implementation notes' },
@@ -40,9 +44,13 @@ const toc = [
             <div class="relative mx-auto max-w-6xl px-5 pb-14 pt-16 sm:pt-20">
                 <SectionHeading
                     eyebrow="Developers"
-                    title="Activate, check, and verify offline"
-                    description="All license endpoints live under /api/v1. Activation and checks are throttled, and every response that carries license state is signed so your application can verify it without a network round-trip."
+                    title="Activate, check, pulse, and verify offline"
+                    description="All license endpoints live under /api/v1. Activation, check, pulse, and deactivate are throttled, and every response that carries license state is signed with RSA-SHA256 so your application can verify it without a network round-trip."
                 />
+                <div class="mt-6 flex flex-wrap items-center gap-3">
+                    <Badge status="success" :dot="false">API v1</Badge>
+                    <code class="font-mono text-[12.5px] text-text-secondary">X-API-Version: 1.0.0</code>
+                </div>
             </div>
         </section>
 
@@ -78,14 +86,48 @@ const toc = [
                         <SectionHeading
                             eyebrow="Activation"
                             title="Request and signed response"
-                            description="Send the license key and fingerprint, then store the signed response for offline checks."
+                            description="Send the license key, product code, and fingerprint, then store the signed response for offline checks."
                         />
                         <div class="mt-8 grid gap-6 lg:grid-cols-2">
                             <CodeBlock heading="Request" caption="POST /api/v1/license/activate">
                                 <template #default><span>{{ activationExample.request }}</span></template>
                             </CodeBlock>
-                            <CodeBlock heading="Signed response" caption="The payload and signature are returned on every state response.">
+                            <CodeBlock heading="Signed response" caption="The data object and signature are returned on every state-bearing response.">
                                 <template #default><span>{{ activationExample.response }}</span></template>
+                            </CodeBlock>
+                        </div>
+                    </section>
+
+                    <!-- Check -->
+                    <section id="check" class="scroll-mt-24">
+                        <SectionHeading
+                            eyebrow="Check"
+                            title="Read-only validity check"
+                            description="Verify a license without side effects. Unlike activate, check writes no activation rows and never changes the bound environment."
+                        />
+                        <div class="mt-8 grid gap-6 lg:grid-cols-2">
+                            <CodeBlock heading="Request" caption="POST /api/v1/license/check">
+                                <template #default><span>{{ checkExample.request }}</span></template>
+                            </CodeBlock>
+                            <CodeBlock heading="Signed response" caption="Same signed envelope as activate — compare status and offline_valid_until.">
+                                <template #default><span>{{ checkExample.response }}</span></template>
+                            </CodeBlock>
+                        </div>
+                    </section>
+
+                    <!-- Deactivate -->
+                    <section id="deactivate" class="scroll-mt-24">
+                        <SectionHeading
+                            eyebrow="Deactivate"
+                            title="Release a bound seat"
+                            description="Deactivate a license for the requesting domain and machine, freeing the seat for reactivation on another environment."
+                        />
+                        <div class="mt-8 grid gap-6 lg:grid-cols-2">
+                            <CodeBlock heading="Request" caption="POST /api/v1/license/deactivate">
+                                <template #default><span>{{ deactivateExample.request }}</span></template>
+                            </CodeBlock>
+                            <CodeBlock heading="Acknowledgement" caption="Deactivation confirms success; there is no signed payload to cache.">
+                                <template #default><span>{{ deactivateExample.response }}</span></template>
                             </CodeBlock>
                         </div>
                     </section>
@@ -106,7 +148,7 @@ const toc = [
                                     </div>
                                 </dl>
                                 <div class="mt-6">
-                                    <CodeBlock heading="Shell" caption="Verify the base64 payload against the public key.">
+                                    <CodeBlock heading="PHP" caption="Canonicalize the data object, then verify the RSA-SHA256 signature against the public key.">
                                         <template #default><span>{{ offlineExample }}</span></template>
                                     </CodeBlock>
                                 </div>
@@ -120,7 +162,7 @@ const toc = [
                         <SectionHeading
                             eyebrow="Enforcement modes"
                             title="Choose how strictly to bind"
-                            description="Pass enforcement_mode on activate, check, or pulse to control how fingerprint mismatches are handled."
+                            description="Pass enforcement_mode on activate, check, pulse, or deactivate to control how fingerprint mismatches are handled."
                         />
                         <Reveal class="mt-8 grid gap-4 sm:grid-cols-3">
                             <BenefitCard

@@ -235,71 +235,159 @@ export const apiEndpoints = [
         method: 'POST',
         path: '/api/v1/license/activate',
         auth: 'Public (throttled)',
-        summary: 'Activate a license against a domain and IP. Binds the license on first activation.',
+        summary: 'Activates a license key against a domain, IP, and product code. Binds the license environment and returns a signed payload.',
     },
     {
         method: 'POST',
         path: '/api/v1/license/check',
         auth: 'Public (throttled)',
-        summary: 'Read-only validity check. Performs no side effects — no activation rows, no binding changes.',
+        summary: 'Read-only validity check. Performs zero side effects — no logs, no limit increments, and no state changes.',
     },
     {
         method: 'POST',
         path: '/api/v1/license/pulse',
         auth: 'Public (throttled)',
-        summary: 'Lightweight heartbeat that updates last_check_at and reports current status.',
+        summary: 'Lightweight periodic heartbeat. Updates last_check_at and verifies current license state without database overhead.',
+    },
+    {
+        method: 'POST',
+        path: '/api/v1/license/deactivate',
+        auth: 'Public (throttled)',
+        summary: 'Deactivates a license for the requesting domain and machine, releasing the seat for reactivation.',
     },
     {
         method: 'GET',
         path: '/api/v1/license/public-key',
         auth: 'Public',
-        summary: 'Returns the active signing key, algorithm, and key rotation metadata.',
+        summary: 'Returns the active RSA-SHA256 public key, key ID, available keys map, and key rotation metadata for offline verification.',
     },
     {
         method: 'POST',
         path: '/api/v1/license/history',
         auth: 'Bearer token',
-        summary: 'Returns activation history for a license.',
+        summary: 'Returns paginated activation attempts and verification log for an authenticated license owner.',
     },
     {
         method: 'GET',
         path: '/api/v1/products',
         auth: 'Public',
-        summary: 'Lists available products and their prices.',
+        summary: 'Lists all active products, multi-currency price tiers, and licensing editions.',
     },
 ];
 
 // REAL: request/response shapes from LicenseController
 export const activationExample = {
-    request: `curl -X POST https://your-corevisys-host/api/v1/license/activate \\
+    request: `curl -X POST https://your-domain.com/api/v1/license/activate \\
   -H "Content-Type: application/json" \\
+  -H "X-API-Version: 1.0.0" \\
   -d '{
-    "license_key": "[PREFIX]-XXXX-XXXX-XXXX",
+    "license_key": "PROD-XXXX-XXXX-XXXX",
+    "product_code": "corevisys-crm",
     "domain": "app.example.com",
     "ip": "203.0.113.10",
-    "fingerprint": "optional-machine-fingerprint",
+    "fingerprint": "env-hardware-hash-1234",
     "enforcement_mode": "standard"
   }'`,
     response: `{
+  "success": true,
   "status": "success",
+  "message": null,
   "data": {
-    "license_status": "active",
+    "status": "active",
+    "license_id": "42",
+    "product_code": "corevisys-crm",
     "license_type": "full",
     "expires_at": "2027-03-01T00:00:00+00:00",
-    "issued_at": "2026-03-01T00:00:00+00:00",
-    "offline_valid_until": "2026-03-08T00:00:00+00:00"
+    "bound_domain": "app.example.com",
+    "features": [
+      "api_access",
+      "export_reports"
+    ],
+    "issued_at": "2026-10-23T12:00:00+00:00",
+    "offline_valid_until": "2026-10-30T12:00:00+00:00",
+    "is_grace_period": false
   },
-  "payload": "<base64 canonical payload>",
-  "server_signature": "<base64 RSA-SHA256 signature>",
+  "signature": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...",
   "key_id": "corevisys-key-1",
   "algorithm": "RSA-SHA256"
 }`,
 };
 
-export const offlineExample = `# Verify an offline response with the public key
-openssl dgst -sha256 -verify public_key.pem \\
-  -signature <(echo "<base64 server_signature>" | base64 -d) \\
-  <(echo "<base64 payload>" | base64 -d)`;
+// REAL: read-only check returns the same signed envelope as activate.
+export const checkExample = {
+    request: `curl -X POST https://your-domain.com/api/v1/license/check \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Version: 1.0.0" \\
+  -d '{
+    "license_key": "PROD-XXXX-XXXX-XXXX",
+    "product_code": "corevisys-crm",
+    "domain": "app.example.com",
+    "ip": "203.0.113.10",
+    "fingerprint": "env-hardware-hash-1234",
+    "enforcement_mode": "standard"
+  }'`,
+    response: `{
+  "success": true,
+  "status": "success",
+  "message": null,
+  "data": {
+    "status": "active",
+    "license_id": "42",
+    "product_code": "corevisys-crm",
+    "license_type": "full",
+    "expires_at": "2027-03-01T00:00:00+00:00",
+    "bound_domain": "app.example.com",
+    "features": [
+      "api_access",
+      "export_reports"
+    ],
+    "issued_at": "2026-10-23T12:00:00+00:00",
+    "offline_valid_until": "2026-10-30T12:00:00+00:00",
+    "is_grace_period": false
+  },
+  "signature": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...",
+  "key_id": "corevisys-key-1",
+  "algorithm": "RSA-SHA256"
+}`,
+};
+
+// REAL: deactivate returns a simple acknowledgement (no signature).
+export const deactivateExample = {
+    request: `curl -X POST https://your-domain.com/api/v1/license/deactivate \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Version: 1.0.0" \\
+  -d '{
+    "license_key": "PROD-XXXX-XXXX-XXXX",
+    "product_code": "corevisys-crm",
+    "domain": "app.example.com",
+    "ip": "203.0.113.10",
+    "fingerprint": "env-hardware-hash-1234",
+    "reason": "server retired"
+  }'`,
+    response: `{
+  "success": true,
+  "status": "success",
+  "message": "License deactivated successfully.",
+  "data": []
+}`,
+};
+
+export const offlineExample = `// PHP Offline Verification
+$publicKey = openssl_get_publickey($pemString);
+$signature = base64_decode($response['signature']);
+
+// 1. Canonicalize data object (recursive key sort)
+function canonicalize($val) {
+    if (is_array($val)) {
+        if (!array_is_list($val)) ksort($val);
+        foreach ($val as $k => $v) $val[$k] = canonicalize($v);
+    }
+    return $val;
+}
+$canonicalPayload = json_encode(canonicalize($response['data']), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+// 2. Verify RSA-SHA256 signature
+$isValid = openssl_verify($canonicalPayload, $signature, $publicKey, OPENSSL_ALGO_SHA256) === 1;`;
 
 // REAL: values from config/services.php and OfflineLicenseVerification
 export const offlineFacts = [
@@ -311,31 +399,33 @@ export const offlineFacts = [
 
 export const offlineSteps = [
     {
-        title: 'Read the public key',
-        body: 'Call GET /api/v1/license/public-key. It returns the active key id, the public key, the algorithm, and any rotation metadata your client needs.',
+        title: 'Fetch the Public Key',
+        body: 'Call GET /api/v1/license/public-key on installation or startup and cache the RSA public key and active key ID locally.',
     },
     {
-        title: 'Cache the signed payload',
-        body: 'Activation and pulse responses include a base64 payload plus a base64 server_signature. Store both so the license can be verified while offline.',
+        title: 'Store the Data & Signature',
+        body: 'When your app activates or checks in via pulse, cache the JSON "data" object and the base64 "signature" string in local storage or file.',
     },
     {
-        title: 'Verify locally',
-        body: 'Canonicalise the payload (keys sorted, JSON without extra whitespace) and verify the RSA-SHA256 signature against the cached public key.',
+        title: 'Canonicalize & Verify Locally',
+        body: 'To verify offline without internet, canonicalize the cached "data" object (sort keys alphabetically) and verify the "signature" using the cached public key with RSA-SHA256.',
     },
     {
-        title: 'Respect the window',
-        body: 'The signed payload includes an offline_valid_until timestamp. Your application can operate without contacting the server until that date, typically 7 days from the last successful check or pulse. Suspended pulse responses intentionally omit offline_valid_until; clients must treat a missing offline_valid_until as no offline use.',
+        title: 'Enforce the Offline Window',
+        body: 'Inspect data.offline_valid_until. Your application can operate completely offline until this timestamp (defaults to 7 days from last server check).',
     },
     {
-        title: 'Fail closed',
-        body: 'If the signing key is unavailable on the server, the API returns 503 rather than an unsigned response.',
+        title: 'Grace Period Awareness',
+        body: 'If data.is_grace_period is true, notify the customer that their license has expired and they are operating within the temporary grace period.',
     },
 ];
 
 export const developerNotes = [
-    'Signing keys are read through config(), never directly from the environment in application code.',
-    'Revoked key ids are rejected during verification, so key rotation does not break already-issued licenses.',
-    'In check and pulse, localhost and 127.0.0.1 are treated as the same host.',
+    'Always provide the X-API-Version header (e.g., 1.0.0) with requests to guarantee forward compatibility.',
+    'product_code (the product slug) is validated during activate, check, and pulse to prevent cross-product key tampering.',
+    'Domains are automatically normalized (schemes, www., ports, and trailing slashes are stripped; localhost and 127.0.0.1 are unified).',
+    'Reactivations on the same domain do not consume additional activation slots.',
+    'Fingerprint enforcement modes: standard (warn/grace), strict (require matching fingerprint), active (enforced on bound machines).',
 ];
 
 // REAL: from the license/order model
